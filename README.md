@@ -18,8 +18,15 @@ There are three ways to use it:
 
 ## Browser version (`census-extractor.html`)
 
-Download [`census-extractor.html`](census-extractor.html) (click it, then **Download raw file**),
-double-click it, and paste your free [Census API key](https://api.census.gov/data/key_signup.html).
+**Use it online:** **https://448p8nvg7r-lgtm.github.io/PuertoRico_Census_Extractor/**
+(hosted with GitHub Pages; nothing to install).
+
+**Or use it offline:** download [`census-extractor.html`](census-extractor.html) (click it, then **Download raw file**)
+and double-click it.
+
+Either way, paste your free [Census API key](https://api.census.gov/data/key_signup.html).
+The key stays in your browser. It's sent only to the Census API, and it's saved
+on your computer only if you tick *Remember on this computer*.
 
 - **🇵🇷 Puerto Rico by default.** *Puerto Rico only* limits every search and
   download to Puerto Rico areas: municipios (`county`), barrios (`county subdivision`),
