@@ -1,0 +1,50 @@
+# Builds the Windows installer on GitHub's servers - no Windows build tools needed locally.
+# Run it from the repo's Actions tab ("Run workflow"), or push a tag like v1.0.0.
+name: Build Windows installer
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write   # needed to attach the installer to a release on tag builds
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run tests
+        shell: pwsh
+        run: |
+          python -m pip install . pytest --quiet
+          python -m pytest -q
+
+      - name: Ensure Inno Setup is installed
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup -y --no-progress
+          }
+
+      - name: Build installer
+        shell: pwsh
+        run: .\windows\build_windows.ps1 -Python python
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: CensusExtractor-Setup
+          path: dist/installer/*.exe
+
+      - name: Attach installer to GitHub release (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/installer/*.exe

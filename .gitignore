@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+.venv-build/
+
+# Build output (Windows installer / PyInstaller)
+build/
+dist/
+*.spec
+
+# Extract outputs you may create while testing
+*.csv
+*_dictionary.csv
+*.geojson
+*_shapefile.zip
+
+# Secrets: never commit an API key
+.env
+*.key
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

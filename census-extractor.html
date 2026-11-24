@@ -1,0 +1,2132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>US Census Variable Extractor</title>
+<style>
+  :root {
+    --bg: #f5f7fa; --panel: #ffffff; --ink: #1b2430; --muted: #5d6b7e; --line: #dde3ea;
+    --accent: #1f5fa8; --accent-ink: #ffffff; --accent-soft: #e6effa; --warn-bg: #fff6e0;
+    --warn-ink: #7a5300; --err-bg: #fdecec; --err-ink: #9b1c1c; --ok-bg: #e8f6ec; --ok-ink: #17602f;
+    --code-bg: #eef2f6; --row-hover: #f2f6fb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #11161d; --panel: #19202a; --ink: #e3e9f0; --muted: #98a6b8; --line: #2c3644;
+      --accent: #5b9be6; --accent-ink: #0b1220; --accent-soft: #1d2b3d; --warn-bg: #3a2f12;
+      --warn-ink: #f3d58a; --err-bg: #3d1a1a; --err-ink: #f5b5b5; --ok-bg: #163322; --ok-ink: #9be0b1;
+      --code-bg: #222b37; --row-hover: #202936;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         background: var(--bg); color: var(--ink); }
+  header { padding: 18px 24px 8px; display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 22px; }
+  header p { margin: 4px 0 0; color: var(--muted); }
+  .header-actions { display: flex; gap: 8px; }
+  .layout { display: grid; grid-template-columns: 300px 1fr; gap: 18px; padding: 12px 24px 40px; align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  aside, main section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  aside { position: sticky; top: 12px; }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  h3 { font-size: 14px; margin: 14px 0 6px; }
+  label { display: block; font-weight: 600; margin: 10px 0 4px; font-size: 13px; }
+  .hint { color: var(--muted); font-size: 12px; font-weight: 400; }
+  input[type=text], input[type=password], select, textarea {
+    width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--bg); color: var(--ink); font: inherit; }
+  textarea { min-height: 80px; resize: vertical; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  button { font: inherit; padding: 7px 12px; border-radius: 6px; border: 1px solid var(--line);
+           background: var(--panel); color: var(--ink); cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 12px; flex-wrap: wrap; }
+  .tabs button { border-radius: 999px; }
+  .tabs button.active { background: var(--accent-soft); border-color: var(--accent); font-weight: 600; }
+  .tab { display: none; }
+  .tab.active { display: block; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 1100px) { .grid2 { grid-template-columns: 1fr; } }
+  .scroll { max-height: 360px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
+  tbody tr:hover { background: var(--row-hover); }
+  #preview td { white-space: nowrap; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  code, .code { font-family: ui-monospace, Consolas, monospace; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+  .msg { padding: 9px 12px; border-radius: 6px; margin: 8px 0; white-space: pre-wrap; word-break: break-word; }
+  .msg.warn { background: var(--warn-bg); color: var(--warn-ink); }
+  .msg.err { background: var(--err-bg); color: var(--err-ink); }
+  .msg.ok { background: var(--ok-bg); color: var(--ok-ink); }
+  .msg.info { background: var(--accent-soft); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { display: inline-flex; gap: 6px; align-items: center; background: var(--accent-soft); border-radius: 999px; padding: 3px 4px 3px 10px; font-size: 12.5px; }
+  .chip button { padding: 0 7px; border: none; background: transparent; font-size: 14px; line-height: 1.2; }
+  .checklist { max-height: 190px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; background: var(--bg); }
+  .checklist label { font-weight: 400; margin: 2px 0; display: flex; gap: 6px; align-items: center; }
+  .muted { color: var(--muted); }
+  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #log { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--muted); max-height: 140px; overflow: auto; }
+  .stat { font-size: 12.5px; color: var(--muted); margin-top: 10px; }
+  details summary { cursor: pointer; font-weight: 600; margin: 8px 0; }
+  a { color: var(--accent); }
+  .prbox { background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 8px; padding: 9px 11px; margin-bottom: 12px; }
+  .prbox label { margin: 0; display: flex; gap: 8px; align-items: center; font-size: 14px; }
+  .prbox .hint { margin: 4px 0 0 24px; }
+  .prtables { background: var(--accent-soft); border-radius: 8px; padding: 8px 11px; margin-bottom: 12px; }
+  .prtables label { margin: 0; display: flex; gap: 8px; align-items: center; }
+  hr { border: none; border-top: 1px solid var(--line); margin: 14px 0; }
+  /* Help dialog */
+  dialog#help { width: min(920px, 94vw); max-height: 90vh; padding: 0; border: 1px solid var(--line); border-radius: 12px;
+                background: var(--panel); color: var(--ink); }
+  dialog#help::backdrop { background: rgba(10, 16, 24, .55); }
+  .help-head { position: sticky; top: 0; background: var(--panel); border-bottom: 1px solid var(--line); padding: 12px 18px;
+               display: flex; justify-content: space-between; align-items: center; gap: 10px; z-index: 2; }
+  .help-head h2 { margin: 0; font-size: 18px; }
+  .help-body { padding: 4px 18px 18px; overflow: auto; }
+  .help-nav { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 4px; }
+  .help-nav a { font-size: 12.5px; padding: 3px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--ink); text-decoration: none; }
+  .help-body h3 { font-size: 16px; margin: 22px 0 8px; }
+  .help-body ol, .help-body ul { padding-left: 22px; margin: 6px 0; }
+  .help-body li { margin: 3px 0; }
+  .examples { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .example { border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 6px; background: var(--bg); }
+  .example h4 { margin: 0; font-size: 14px; }
+  .example p { margin: 0; font-size: 13px; }
+  .example .spec { font-size: 12px; color: var(--muted); }
+  .example button { margin-top: auto; align-self: flex-start; }
+  .flag { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); vertical-align: 2px; margin-left: 6px; }
+  /* Boundaries + map */
+  .bpanel { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 14px; }
+  #mapBox { position: relative; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); margin-top: 8px; }
+  #mapBox svg { display: block; width: 100%; height: auto; }
+  #mapBox path { fill-rule: evenodd; stroke: var(--panel); stroke-width: .6; vector-effect: non-scaling-stroke; stroke-linejoin: round; cursor: pointer; }
+  #mapBox path.hl { stroke: var(--ink); stroke-width: 1.6; }
+  .c1 { fill: var(--seq-1); } .c2 { fill: var(--seq-2); } .c3 { fill: var(--seq-3); } .c4 { fill: var(--seq-4); } .c5 { fill: var(--seq-5); } .nd { fill: var(--nodata); }
+  .sw.c1 { background: var(--seq-1); } .sw.c2 { background: var(--seq-2); } .sw.c3 { background: var(--seq-3); } .sw.c4 { background: var(--seq-4); } .sw.c5 { background: var(--seq-5); }
+  .sw.nd { background: repeating-linear-gradient(45deg, var(--nodata) 0 3px, var(--panel) 3px 5px); }
+  .sw { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -2px; margin-right: 6px; }
+  .lg-title { font-size: 13px; margin: 8px 0 4px; }
+  .lg-row { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; }
+  .map-tip { position: absolute; pointer-events: none; background: var(--panel); color: var(--ink); border: 1px solid var(--line);
+             border-radius: 6px; padding: 6px 9px; font-size: 12.5px; box-shadow: 0 4px 14px rgba(0,0,0,.18); max-width: 280px; z-index: 3; }
+  :root { --seq-1: #86b6ef; --seq-2: #5598e7; --seq-3: #2a78d6; --seq-4: #1c5cab; --seq-5: #0d366b; --nodata: #d6d5d0; }
+  @media (prefers-color-scheme: dark) {
+    :root { --seq-1: #184f95; --seq-2: #256abf; --seq-3: #3987e5; --seq-4: #6da7ec; --seq-5: #b7d3f6; --nodata: #45443f; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1 data-i18n="title">📊 US Census Variable Extractor</h1>
+    <p data-i18n="subtitle"></p>
+  </div>
+  <div class="header-actions">
+    <button id="helpBtn" type="button" data-i18n="helpBtn"></button>
+    <button id="langBtn" type="button" title="English / Español"></button>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- ======================= Sidebar ======================= -->
+  <aside>
+    <div class="prbox">
+      <label><input type="checkbox" id="prOnly"> 🇵🇷 <b data-i18n="prOnly"></b></label>
+      <div class="hint" data-i18n="prOnlyHint"></div>
+    </div>
+    <h2 data-i18n="srcHeading"></h2>
+    <label for="apiKey"><span data-i18n="apiKeyLabel"></span> <span class="hint">(<a href="https://api.census.gov/data/key_signup.html" target="_blank" rel="noopener" data-i18n="getKey"></a>)</span></label>
+    <input id="apiKey" type="password" autocomplete="off" data-i18n-ph="keyPh">
+    <div class="row" style="margin-top:6px">
+      <label style="margin:0;font-weight:400" class="row"><input type="checkbox" id="rememberKey"> <span data-i18n="remember"></span></label>
+      <button id="toggleKey" type="button" style="padding:2px 8px;font-size:12px"></button>
+    </div>
+
+    <label for="dataset" data-i18n="datasetLabel"></label>
+    <select id="dataset"></select>
+    <label style="font-weight:400;margin-top:6px" class="row"><input type="checkbox" id="showAll"> <span data-i18n="showAll"></span></label>
+    <input id="customDataset" type="text" data-i18n-ph="customPh" style="margin-top:6px">
+
+    <label for="year"><span data-i18n="yearLabel"></span> <span class="hint" data-i18n="yearHint"></span></label>
+    <select id="year"></select>
+
+    <label><span data-i18n="stackLabel"></span> <span class="hint" data-i18n="optional"></span></label>
+    <div id="extraYears" class="checklist" style="max-height:110px"></div>
+
+    <div class="stat" id="selStat"></div>
+    <div class="row" style="margin-top:10px">
+      <button id="loadSettingsBtn" type="button" data-i18n="loadSettings"></button>
+      <button id="clearAll" type="button" data-i18n="clearSel"></button>
+    </div>
+    <input type="file" id="loadSettingsFile" accept=".json,application/json" hidden>
+    <div id="catalogueMsg"></div>
+  </aside>
+
+  <!-- ======================= Main ======================= -->
+  <main>
+    <section>
+      <div class="tabs" id="tabs">
+        <button data-tab="vars" class="active" data-i18n="tabVars"></button>
+        <button data-tab="geo" data-i18n="tabGeo"></button>
+        <button data-tab="opts" data-i18n="tabOpts"></button>
+        <button data-tab="run" data-i18n="tabRun"></button>
+      </div>
+
+      <!-- Variables -->
+      <div class="tab active" id="tab-vars">
+        <div id="varsLoading"></div>
+        <div class="prtables">
+          <label><input type="checkbox" id="prTables"> 🇵🇷 <span data-i18n="prTables"></span></label>
+          <div id="prTablesInfo" class="hint" style="margin:4px 0 0 24px"></div>
+        </div>
+        <div class="grid2">
+          <div>
+            <h2 data-i18n="searchVarsH"></h2>
+            <input id="varSearch" type="text" data-i18n-ph="varSearchPh">
+            <div class="hint" style="margin-top:4px" data-i18n="varSearchHint"></div>
+            <div id="varResultsInfo" class="stat"></div>
+            <div class="scroll" id="varResultsWrap" hidden>
+              <table><thead><tr><th style="width:34px"><input type="checkbox" id="checkAllHits" data-i18n-title="checkAll"></th><th data-i18n="colCode"></th><th data-i18n="colLabel"></th><th data-i18n="colConcept"></th></tr></thead>
+              <tbody id="varResults"></tbody></table>
+            </div>
+            <div class="row" style="margin-top:8px"><button class="primary" id="addChecked" hidden data-i18n="addChecked"></button></div>
+            <details>
+              <summary data-i18n="pasteSummary"></summary>
+              <textarea id="pasteCodes" placeholder="B01003_001E, B19013_001E"></textarea>
+              <div class="row" style="margin-top:6px"><button id="addPasted" data-i18n="addPasted"></button></div>
+              <div id="pasteMsg"></div>
+            </details>
+          </div>
+          <div>
+            <h2 data-i18n="tablesH"></h2>
+            <input id="groupSearch" type="text" data-i18n-ph="groupSearchPh">
+            <div id="groupInfo" class="stat"></div>
+            <select id="groupSelect" size="6" hidden style="margin-top:6px"></select>
+            <div id="groupPreviewWrap" class="scroll" hidden style="max-height:200px;margin-top:8px">
+              <table><thead><tr><th data-i18n="colCode"></th><th data-i18n="colLabel"></th></tr></thead><tbody id="groupPreview"></tbody></table>
+            </div>
+            <div class="row" style="margin-top:8px"><button id="addGroup" hidden></button></div>
+          </div>
+        </div>
+        <hr>
+        <h2 data-i18n="selectionH"></h2>
+        <div id="selectionEmpty" class="msg info" data-i18n-html="selectionEmpty"></div>
+        <div class="chips" id="selectionChips"></div>
+        <h3 id="groupsHeading" hidden data-i18n="wholeTables"></h3>
+        <div class="chips" id="groupChips"></div>
+      </div>
+
+      <!-- Geography -->
+      <div class="tab" id="tab-geo">
+        <div id="geoLoading"></div>
+        <label for="geoLevel" data-i18n="oneRowPer"></label>
+        <select id="geoLevel"></select>
+        <div id="geoWhich"></div>
+        <div id="geoParents"></div>
+        <h3 data-i18n="queryH"></h3>
+        <div class="code" id="geoQuery" style="display:block;padding:8px;white-space:pre-wrap"></div>
+        <p class="hint" data-i18n="geoTip"></p>
+      </div>
+
+      <!-- Options -->
+      <div class="tab" id="tab-opts">
+        <div class="grid2">
+          <div>
+            <label class="row" style="font-weight:600"><input type="checkbox" id="includeMoe" checked> <span data-i18n="moe"></span></label>
+            <div class="hint" data-i18n="moeHint"></div>
+            <label data-i18n="headersLabel"></label>
+            <div class="row">
+              <label class="row" style="font-weight:400;margin:0"><input type="radio" name="headers" value="code" checked> <span data-i18n="hCodes"></span></label>
+              <label class="row" style="font-weight:400;margin:0"><input type="radio" name="headers" value="both"> <span data-i18n="hBoth"></span></label>
+              <label class="row" style="font-weight:400;margin:0"><input type="radio" name="headers" value="label"> <span data-i18n="hLabels"></span></label>
+            </div>
+            <label for="outName" data-i18n="outName"></label>
+            <input id="outName" type="text" value="census_extract.csv">
+          </div>
+          <div>
+            <label for="filters"><span data-i18n="filtersLabel"></span> <span class="hint" data-i18n="filtersSub"></span></label>
+            <textarea id="filters" placeholder="B01003_001E >= 50000&#10;B19013_001E < 60000&#10;NAME contains Municipio"></textarea>
+            <div class="hint" data-i18n-html="filtersHint"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Run -->
+      <div class="tab" id="tab-run">
+        <div id="runSummary"></div>
+        <div id="runBlockers"></div>
+        <div class="row"><button class="primary" id="runBtn" data-i18n="runBtn"></button><span id="runStatus"></span></div>
+        <div id="log"></div>
+        <div id="runMsgs"></div>
+        <div id="resultArea" hidden>
+          <div class="row" style="margin:10px 0">
+            <button class="primary" id="dlCsv" data-i18n="dlCsv"></button>
+            <button id="dlDict" data-i18n="dlDict"></button>
+            <button id="dlSettings" data-i18n="dlSettings"></button>
+          </div>
+          <div class="stat" id="previewInfo"></div>
+          <div class="scroll" style="max-height:460px"><table id="preview"></table></div>
+          <div class="bpanel">
+            <h2 data-i18n="bTitle"></h2>
+            <p class="hint" style="margin-top:0" data-i18n="bIntro"></p>
+            <div class="row">
+              <label class="row" style="font-weight:400;margin:0"><input type="radio" name="bDetail" value="simplified" checked> <span data-i18n="bSimplified"></span></label>
+              <label class="row" style="font-weight:400;margin:0"><input type="radio" name="bDetail" value="detailed"> <span data-i18n="bDetailed"></span></label>
+            </div>
+            <div id="bLarge"></div>
+            <div class="row" style="margin-top:8px"><button class="primary" id="bGet" data-i18n="bGet"></button><span id="bStatus"></span></div>
+            <div id="bInfo"></div>
+            <div id="bOutputs" hidden>
+              <div class="row" style="margin:8px 0">
+                <button class="primary" id="dlGeojson" data-i18n="dlGeojson"></button>
+                <button id="dlShp" data-i18n="dlShp"></button>
+              </div>
+              <div id="mapWrap">
+                <h3 data-i18n="mapTitle"></h3>
+                <label for="mapVar" data-i18n="mapVar"></label>
+                <select id="mapVar" style="max-width:640px"></select>
+                <div id="mapBox"></div>
+                <div id="mapLegend"></div>
+                <p class="hint" data-i18n="mapHint"></p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ======================= Help dialog ======================= -->
+<dialog id="help">
+  <div class="help-head">
+    <h2 data-i18n="helpTitle"></h2>
+    <div class="row">
+      <button type="button" class="js-lang" title="English / Español"></button>
+      <button type="button" id="helpClose" data-i18n="close"></button>
+    </div>
+  </div>
+  <div class="help-body" id="helpBody"></div>
+</dialog>
+
+<script>
+"use strict";
+/* ===================================================================
+   Translations
+   =================================================================== */
+const I18N = {
+  en: {
+    title: "📊 US Census Variable Extractor",
+    subtitle: "Pick variables, choose a geography, set criteria and download a CSV. Runs entirely in your browser using the official Census Data API.",
+    helpBtn: "❓ Help & examples", langBtn: "🌐 Español", close: "Close", helpTitle: "Help & examples",
+    srcHeading: "1 · Data source", apiKeyLabel: "Census API key", getKey: "get a free key", keyPh: "Paste your key",
+    remember: "Remember on this computer", show: "Show", hide: "Hide",
+    datasetLabel: "Dataset", showAll: "Show all datasets", customPh: "…or type a dataset path, e.g. acs/acs5/cprofile",
+    yearLabel: "Year", yearHint: "(only years this dataset has)", stackLabel: "Also stack these years", optional: "(optional)",
+    loadSettings: "Load settings…", clearSel: "Clear selections",
+    tabVars: "2 · Variables", tabGeo: "3 · Geography", tabOpts: "4 · Options & filters", tabRun: "5 · Extract & download",
+    searchVarsH: "Search individual variables", varSearchPh: "e.g. median household income",
+    varSearchHint: "All words must match the code, label or concept. Census labels are in English.",
+    colCode: "Code", colLabel: "Label", colConcept: "Concept", checkAll: "Check all",
+    addChecked: "Add checked variables", pasteSummary: "Paste variable codes directly", addPasted: "Add pasted codes",
+    tablesH: "Add whole tables", groupSearchPh: "e.g. educational attainment",
+    selectionH: "Your selection",
+    selectionEmpty: "Nothing selected yet. Search above, tick the variables you want and click <b>Add checked variables</b>, add a whole table, or open <b>Help &amp; examples</b> to load a ready-made example.",
+    wholeTables: "Whole tables", oneRowPer: "One row per…", queryH: "Query that will be sent",
+    geoTip: "Tip: to find county or municipio codes, run a first extract at the parent level. The codes appear in the output columns. Help lists the main Puerto Rico municipio codes.",
+    moe: "Include margins of error", moeHint: "Adds the matching …M column after each …E estimate (ACS).",
+    headersLabel: "Column headers", hCodes: "Codes", hBoth: "Label + [code]", hLabels: "Labels only",
+    outName: "Output file name", filtersLabel: "Row filters", filtersSub: "(optional, one per line; rows must match all)",
+    filtersHint: "Formats: <code>CODE &gt;= number</code> (also &gt; &lt; &lt;= == !=), <code>CODE between 10 and 20</code>, <code>CODE is not blank</code>, <code>NAME contains text</code>, <code>NAME not contains text</code>.",
+    runBtn: "▶ Run extraction", dlCsv: "⬇ Download CSV", dlDict: "⬇ Data dictionary", dlSettings: "⬇ Save settings",
+    // dynamic
+    selStat: "Selected: <b>{v}</b> variables, <b>{g}</b> whole tables",
+    available: "Available: {r}", notInCatalogueUi: "'{ds}' isn't in the Census API catalogue. Check the dataset path.",
+    loadingCatalogue: "Loading the Census dataset catalogue…", catalogueFail: "Could not load the Census dataset catalogue. ",
+    loadingVars: "Loading variables for {ds} {yr} (large lists can take 10–30 seconds)…", loadingGeos: "Loading geography levels…",
+    varsLoaded: "{v} variables and {g} tables in {ds} {yr}.",
+    matches: "{n} matches", matchesCapped: "{n} matches (showing first 300; add words to narrow)",
+    tablesMatching: "{n} matching tables", noTableList: "This dataset has no table list.",
+    addTable: "Add entire table {g} ({n} variables incl. margins of error)", alreadySelected: "Already selected", remove: "Remove",
+    notFoundPaste: "Not found in {ds} {yr}: {codes}", addedCodes: "Added {n} code(s).",
+    whichStates: "Which states?", whichStatesHint: '(leave "All states" ticked for all)', allStates: "All states",
+    whichGeo: "Which {g}?", whichGeoHint: "* = all, or comma-separated codes such as 127,021",
+    within: "within", insideParent: "Inside which parent area?",
+    stateParentWc: 'State(s) <span class="hint">("All states" allowed)</span>',
+    stateParentReq: 'State(s) <span class="hint">(required: pick at least one)</span>',
+    parentCode: "{lvl} code(s)", parentHintWc: "* allowed, e.g. 127 for San Juan Municipio", parentHintReq: "required, e.g. 127 for San Juan Municipio",
+    sumDataset: "Dataset", sumYears: "Year(s)", sumVars: "Variables", sumTables: "Whole tables", sumGeo: "Geography", sumFilters: "Filters", none: "none", and: "AND",
+    blockKey: "Enter your Census API key in the sidebar.", blockSel: "Select at least one variable or table (tab 2).",
+    blockParent: "Fill in the parent geography: {list} (tab 3).",
+    downloading: "Downloading from the Census API…", complete: "Extraction complete: {r} rows × {c} columns",
+    previewInfo: "Preview shows the first {limit} of {total} rows. The download includes all rows.",
+    loadedSettings: "Loaded settings: {name}.", badJson: "That file isn't valid JSON. Load a settings file saved from this page (or a .json config).",
+    notInThisYear: "(not in this dataset/year)",
+    logLoadingVars: "{yr}: loading variable list for {ds}", logBatch: "{yr}: requesting batch {i} of {n} ({k} variables)",
+    logFilter: 'Filter "{f}" kept {a} of {b} rows', logDone: "Done: {r} rows × {c} columns",
+    errKeyRequired: "A Census API key is required to download data. Get a free one at https://api.census.gov/data/key_signup.html (click the activation link in the email), then paste it in the sidebar.",
+    errUnreachable: "Could not reach the Census API.\nRequest: {url}\nCheck your internet connection. If you're online, your browser, network or an extension may be blocking the request. Try another browser (Chrome, Edge or Firefox), or turn off ad/tracker blockers for this page.",
+    err404: "Not found on the Census API (HTTP 404): {url}\nThis usually means that dataset isn't published for that year.",
+    errHttp: "Census API returned HTTP {s}: {t}\nRequest: {url}",
+    errBadKey: "The Census API rejected the API key: {t}\nCheck the key, and make sure you clicked the activation link in the confirmation email.",
+    errNonJson: "Unexpected (non-JSON) response from the Census API: {t}\nRequest: {url}",
+    errNotAvailable: "'{ds}' isn't available for {yr}. Available years: {r}. Latest: {latest}.",
+    errNotInCatalogue: "Dataset '{ds}' isn't in the Census API catalogue. Check the spelling (e.g. acs/acs5, acs/acs1, dec/dhc).",
+    errUnknownState: "Unknown state: '{s}'. Use a name, 2-letter code or FIPS code.",
+    errNoParent: "No value given for parent geography '{lvl}'.",
+    errTableNotFound: "Table {g} not found in {ds} {yr}.", errVarsNotFound: "Variable(s) not found in {ds} {yr}: {list}. Codes can change between years; search again for that year.",
+    skipped: " Skipped.", errNoValid: "No valid variables to download.", errNoneAvailable: "None of the requested years are available. ",
+    skippedYear: "Skipped {yr}: {m}",
+    errFilterUses: 'Filter "{f}" uses {col}, which isn\'t in this extract. Add it to your variables first (filters can only use downloaded columns).',
+    errNotNumber: "Filter \"{f}\": '{s}' is not a number.",
+    errFilterUnknown: 'Couldn\'t understand filter "{f}". Examples: B01003_001E >= 50000 · B19013_001E between 40000 and 80000 · NAME contains Municipio',
+    exampleLoaded: "Example loaded: {name}. Check tab 5 and click Run extraction.",
+    loadExample: "Load this example",
+    stateLabel: "State", prOnly: "Puerto Rico only", prOnlyHint: "Searches and downloads cover only Puerto Rico areas (municipios, barrios, tracts…). Untick to use other states.",
+    prTables: "Only Puerto Rico–specific tables (codes ending in PR)",
+    prTablesCount: "{n} Puerto Rico–specific tables in {ds} {yr}. Search them, or pick one under Add whole tables. Untick to see all tables.",
+    prTablesNone: "{ds} {yr} has no Puerto Rico–specific tables. Untick the box above to see all variables (they also cover Puerto Rico).",
+    prStateLocked: "Locked by “Puerto Rico only”.",
+    prPostNote: "With “Puerto Rico only”, all areas are downloaded and then only Puerto Rico's are kept.",
+    prOffLoaded: "These settings use areas outside Puerto Rico, so “Puerto Rico only” was turned off.",
+    logPrFilter: "Kept {a} Puerto Rico areas of {b}",
+    bTitle: "🗺 Boundaries (map files)", bIntro: "Download the matching boundary shapes from the Census Bureau's TIGERweb service, joined with your data by GEOID, for mapping in QGIS, ArcGIS or web maps.",
+    bSimplified: "Simplified, clipped to shoreline (best for maps)", bDetailed: "Full detail (TIGER/Line)", bGet: "🗺 Get boundaries",
+    bFindingLayer: "Finding the {lvl} boundary layer ({src})…", bFetching: "Downloading boundaries ({layer}): {a} of {b} areas…",
+    bDone: "{n} boundary shapes ready. Source: TIGERweb {src}.", bMissing: "{n} areas have no matching boundary for this year: {list}",
+    bFallbackGen: "Simplified boundaries aren't published for the '{lvl}' level, so full-detail boundaries are used.",
+    bFallbackYear: "TIGERweb has no boundaries for {yr}, so current boundaries are used. Some areas may not match.",
+    bMultiYear: "The boundary files use the {yr} values. Other stacked years are only in the CSV.",
+    bNoGeoid: "Boundaries need a GEOID column, and this geography doesn't produce one.",
+    bUnsupported: "TIGERweb has no boundaries for the '{lvl}' level.",
+    bUnreachable: "Could not reach TIGERweb (tigerweb.geo.census.gov). Check your internet connection, or try another browser or turn off ad blockers for this page.",
+    bTigerErr: "TIGERweb error: {m}", bCurrent: "current",
+    bLarge: "This extract has {n} areas, so getting boundaries may take a few minutes and the files will be large.",
+    dlGeojson: "⬇ GeoJSON", dlShp: "⬇ Shapefile (.zip)", mapTitle: "Preview map", mapVar: "Shade the map by", mapNoData: "No data",
+    mapHint: "Hover over an area to see its value. Colors split the areas into five equal-sized groups (quintiles); the number of areas in each is in brackets.",
+  },
+  es: {
+    title: "📊 Extractor de variables del Censo de EE. UU.",
+    subtitle: "Elija variables, escoja la geografía, defina criterios y descargue un CSV. Funciona completamente en su navegador con la API oficial de datos del Censo.",
+    helpBtn: "❓ Ayuda y ejemplos", langBtn: "🌐 English", close: "Cerrar", helpTitle: "Ayuda y ejemplos",
+    srcHeading: "1 · Fuente de datos", apiKeyLabel: "Clave de la API del Censo", getKey: "obtener una clave gratis", keyPh: "Pegue su clave",
+    remember: "Recordar en esta computadora", show: "Mostrar", hide: "Ocultar",
+    datasetLabel: "Conjunto de datos", showAll: "Mostrar todos los conjuntos", customPh: "…o escriba la ruta, p. ej. acs/acs5/cprofile",
+    yearLabel: "Año", yearHint: "(solo los años disponibles)", stackLabel: "Agregar también estos años", optional: "(opcional)",
+    loadSettings: "Cargar configuración…", clearSel: "Borrar selección",
+    tabVars: "2 · Variables", tabGeo: "3 · Geografía", tabOpts: "4 · Opciones y filtros", tabRun: "5 · Extraer y descargar",
+    searchVarsH: "Buscar variables", varSearchPh: "p. ej. median household income",
+    varSearchHint: "Todas las palabras deben aparecer en el código, la etiqueta o el concepto. Las etiquetas del Censo están en inglés: busque en inglés (p. ej. income, poverty, population).",
+    colCode: "Código", colLabel: "Etiqueta", colConcept: "Concepto", checkAll: "Marcar todas",
+    addChecked: "Agregar variables marcadas", pasteSummary: "Pegar códigos de variables", addPasted: "Agregar códigos pegados",
+    tablesH: "Agregar tablas completas", groupSearchPh: "p. ej. educational attainment",
+    selectionH: "Su selección",
+    selectionEmpty: "Todavía no ha seleccionado nada. Busque arriba, marque las variables y pulse <b>Agregar variables marcadas</b>, agregue una tabla completa o abra <b>Ayuda y ejemplos</b> para cargar un ejemplo listo.",
+    wholeTables: "Tablas completas", oneRowPer: "Una fila por…", queryH: "Consulta que se enviará",
+    geoTip: "Consejo: para conocer los códigos de condados o municipios, haga primero una extracción del nivel superior; los códigos aparecen en las columnas del resultado. La Ayuda incluye los códigos de los principales municipios de Puerto Rico.",
+    moe: "Incluir márgenes de error", moeHint: "Agrega la columna …M correspondiente después de cada estimado …E (ACS).",
+    headersLabel: "Encabezados de columna", hCodes: "Códigos", hBoth: "Etiqueta + [código]", hLabels: "Solo etiquetas",
+    outName: "Nombre del archivo", filtersLabel: "Filtros de filas", filtersSub: "(opcional, uno por línea; las filas deben cumplir todos)",
+    filtersHint: "Formatos: <code>CÓDIGO &gt;= número</code> (también &gt; &lt; &lt;= == !=), <code>CÓDIGO between 10 and 20</code>, <code>CÓDIGO is not blank</code>, <code>NAME contains texto</code>, <code>NAME not contains texto</code>. Las palabras clave de los filtros se escriben en inglés.",
+    runBtn: "▶ Ejecutar extracción", dlCsv: "⬇ Descargar CSV", dlDict: "⬇ Diccionario de datos", dlSettings: "⬇ Guardar configuración",
+    selStat: "Seleccionado: <b>{v}</b> variables, <b>{g}</b> tablas completas",
+    available: "Disponible: {r}", notInCatalogueUi: "'{ds}' no está en el catálogo de la API del Censo. Revise la ruta.",
+    loadingCatalogue: "Cargando el catálogo de datos del Censo…", catalogueFail: "No se pudo cargar el catálogo de datos del Censo. ",
+    loadingVars: "Cargando variables de {ds} {yr} (las listas grandes pueden tardar de 10 a 30 segundos)…", loadingGeos: "Cargando niveles geográficos…",
+    varsLoaded: "{v} variables y {g} tablas en {ds} {yr}.",
+    matches: "{n} resultados", matchesCapped: "{n} resultados (se muestran los primeros 300; agregue palabras para afinar)",
+    tablesMatching: "{n} tablas encontradas", noTableList: "Este conjunto de datos no tiene lista de tablas.",
+    addTable: "Agregar la tabla {g} completa ({n} variables, con márgenes de error)", alreadySelected: "Ya seleccionada", remove: "Quitar",
+    notFoundPaste: "No se encontró en {ds} {yr}: {codes}", addedCodes: "Se agregaron {n} código(s).",
+    whichStates: "¿Qué estados?", whichStatesHint: '(deje marcado "Todos los estados" para todos)', allStates: "Todos los estados",
+    whichGeo: "¿Qué {g}?", whichGeoHint: "* = todos, o códigos separados por comas, p. ej. 127,021",
+    within: "dentro de", insideParent: "¿Dentro de qué área?",
+    stateParentWc: 'Estado(s) <span class="hint">(se permite "Todos los estados")</span>',
+    stateParentReq: 'Estado(s) <span class="hint">(obligatorio: elija al menos uno)</span>',
+    parentCode: "Código(s) de {lvl}", parentHintWc: "se permite *, p. ej. 127 para el Municipio de San Juan", parentHintReq: "obligatorio, p. ej. 127 para el Municipio de San Juan",
+    sumDataset: "Conjunto de datos", sumYears: "Año(s)", sumVars: "Variables", sumTables: "Tablas completas", sumGeo: "Geografía", sumFilters: "Filtros", none: "ninguna", and: "Y",
+    blockKey: "Escriba su clave de la API del Censo en la barra lateral.", blockSel: "Seleccione al menos una variable o tabla (pestaña 2).",
+    blockParent: "Complete la geografía superior: {list} (pestaña 3).",
+    downloading: "Descargando de la API del Censo…", complete: "Extracción completa: {r} filas × {c} columnas",
+    previewInfo: "La vista previa muestra las primeras {limit} de {total} filas. La descarga incluye todas las filas.",
+    loadedSettings: "Configuración cargada: {name}.", badJson: "Ese archivo no es JSON válido. Cargue un archivo de configuración guardado desde esta página (o un .json).",
+    notInThisYear: "(no existe en este conjunto/año)",
+    logLoadingVars: "{yr}: cargando la lista de variables de {ds}", logBatch: "{yr}: solicitando el lote {i} de {n} ({k} variables)",
+    logFilter: 'El filtro "{f}" conservó {a} de {b} filas', logDone: "Listo: {r} filas × {c} columnas",
+    errKeyRequired: "Se necesita una clave de la API del Censo para descargar datos. Obtenga una gratis en https://api.census.gov/data/key_signup.html (pulse el enlace de activación del correo) y péguela en la barra lateral.",
+    errUnreachable: "No se pudo conectar con la API del Censo.\nSolicitud: {url}\nRevise su conexión a internet. Si está conectado, su navegador, su red o una extensión podría estar bloqueando la solicitud. Pruebe otro navegador (Chrome, Edge o Firefox) o desactive los bloqueadores de anuncios para esta página.",
+    err404: "No encontrado en la API del Censo (HTTP 404): {url}\nNormalmente significa que ese conjunto de datos no se publica para ese año.",
+    errHttp: "La API del Censo respondió HTTP {s}: {t}\nSolicitud: {url}",
+    errBadKey: "La API del Censo rechazó la clave: {t}\nRevise la clave y asegúrese de haber pulsado el enlace de activación del correo de confirmación.",
+    errNonJson: "Respuesta inesperada (no JSON) de la API del Censo: {t}\nSolicitud: {url}",
+    errNotAvailable: "'{ds}' no está disponible para {yr}. Años disponibles: {r}. Más reciente: {latest}.",
+    errNotInCatalogue: "El conjunto '{ds}' no está en el catálogo de la API del Censo. Revise la ortografía (p. ej. acs/acs5, acs/acs1, dec/dhc).",
+    errUnknownState: "Estado desconocido: '{s}'. Use el nombre, el código de 2 letras o el código FIPS.",
+    errNoParent: "Falta el valor de la geografía superior '{lvl}'.",
+    errTableNotFound: "No se encontró la tabla {g} en {ds} {yr}.", errVarsNotFound: "No se encontraron variables en {ds} {yr}: {list}. Los códigos pueden cambiar entre años; búsquelos de nuevo para ese año.",
+    skipped: " Se omitió.", errNoValid: "No hay variables válidas para descargar.", errNoneAvailable: "Ninguno de los años solicitados está disponible. ",
+    skippedYear: "Se omitió {yr}: {m}",
+    errFilterUses: 'El filtro "{f}" usa {col}, que no está en esta extracción. Agréguelo primero a sus variables (los filtros solo pueden usar columnas descargadas).',
+    errNotNumber: "Filtro \"{f}\": '{s}' no es un número.",
+    errFilterUnknown: 'No se entendió el filtro "{f}". Ejemplos: B01003_001E >= 50000 · B19013_001E between 40000 and 80000 · NAME contains Municipio',
+    exampleLoaded: "Ejemplo cargado: {name}. Revise la pestaña 5 y pulse Ejecutar extracción.",
+    loadExample: "Cargar este ejemplo",
+    stateLabel: "Estado", prOnly: "Solo Puerto Rico", prOnlyHint: "Las búsquedas y descargas cubren solo áreas de Puerto Rico (municipios, barrios, sectores censales…). Desmárquelo para usar otros estados.",
+    prTables: "Solo tablas específicas de Puerto Rico (códigos que terminan en PR)",
+    prTablesCount: "{n} tablas específicas de Puerto Rico en {ds} {yr}. Búsquelas o elija una en Agregar tablas completas. Desmarque la casilla para ver todas las tablas.",
+    prTablesNone: "{ds} {yr} no tiene tablas específicas de Puerto Rico. Desmarque la casilla de arriba para ver todas las variables (también cubren Puerto Rico).",
+    prStateLocked: "Fijado por «Solo Puerto Rico».",
+    prPostNote: "Con «Solo Puerto Rico» se descargan todas las áreas y luego se conservan solo las de Puerto Rico.",
+    prOffLoaded: "Esta configuración usa áreas fuera de Puerto Rico, así que se desactivó «Solo Puerto Rico».",
+    logPrFilter: "Se conservaron {a} áreas de Puerto Rico de {b}",
+    bTitle: "🗺 Límites (archivos de mapa)", bIntro: "Descargue las formas de los límites correspondientes del servicio TIGERweb de la Oficina del Censo, unidas a sus datos por GEOID, para hacer mapas en QGIS, ArcGIS o mapas web.",
+    bSimplified: "Simplificados, recortados a la costa (mejor para mapas)", bDetailed: "Detalle completo (TIGER/Line)", bGet: "🗺 Obtener límites",
+    bFindingLayer: "Buscando la capa de límites de {lvl} ({src})…", bFetching: "Descargando límites ({layer}): {a} de {b} áreas…",
+    bDone: "{n} formas de límites listas. Fuente: TIGERweb {src}.", bMissing: "{n} áreas no tienen límite correspondiente para este año: {list}",
+    bFallbackGen: "No se publican límites simplificados para el nivel '{lvl}', así que se usan límites con detalle completo.",
+    bFallbackYear: "TIGERweb no tiene límites para {yr}, así que se usan los límites actuales. Algunas áreas podrían no coincidir.",
+    bMultiYear: "Los archivos de límites usan los valores de {yr}. Los demás años solo están en el CSV.",
+    bNoGeoid: "Los límites necesitan una columna GEOID, y esta geografía no la produce.",
+    bUnsupported: "TIGERweb no tiene límites para el nivel '{lvl}'.",
+    bUnreachable: "No se pudo conectar con TIGERweb (tigerweb.geo.census.gov). Revise su conexión a internet, o pruebe otro navegador o desactive los bloqueadores de anuncios para esta página.",
+    bTigerErr: "Error de TIGERweb: {m}", bCurrent: "actuales",
+    bLarge: "Esta extracción tiene {n} áreas: obtener los límites puede tardar unos minutos y los archivos serán grandes.",
+    dlGeojson: "⬇ GeoJSON", dlShp: "⬇ Shapefile (.zip)", mapTitle: "Mapa de vista previa", mapVar: "Colorear el mapa por", mapNoData: "Sin datos",
+    mapHint: "Pase el cursor sobre un área para ver su valor. Los colores dividen las áreas en cinco grupos del mismo tamaño (quintiles); entre paréntesis, cuántas áreas hay en cada uno.",
+  },
+};
+let LANG = "en";
+function t(key, vars) {
+  let s = (I18N[LANG] && I18N[LANG][key]) ?? I18N.en[key] ?? key;
+  if (vars) s = s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
+  return s;
+}
+const fmtNum = (n) => Number(n).toLocaleString(LANG === "es" ? "es-PR" : "en-US");
+
+/* ===================================================================
+   Constants
+   =================================================================== */
+const API = "https://api.census.gov/data";
+const MAX_VARS = 50;                      // Census API limit per request (NAME counts)
+const SENTINELS = new Set([-999999999, -888888888, -666666666, -555555555, -333333333, -222222222]);
+const RESERVED = new Set(["for", "in", "ucgid", "time", "GEO_ID"]);
+const COMMON = {
+  en: {
+    "acs/acs5": "ACS 5-Year Detailed Tables (all areas, down to block group)",
+    "acs/acs5/profile": "ACS 5-Year Data Profiles (DP02–DP05)",
+    "acs/acs5/subject": "ACS 5-Year Subject Tables (S-tables)",
+    "acs/acs1": "ACS 1-Year Detailed Tables (areas with 65,000+ people)",
+    "acs/acs1/profile": "ACS 1-Year Data Profiles",
+    "dec/dhc": "2020 Census: Demographic & Housing Characteristics",
+    "dec/pl": "2020 Census: Redistricting Data (P.L. 94-171)",
+  },
+  es: {
+    "acs/acs5": "ACS 5 años, tablas detalladas (todas las áreas, hasta grupo de bloques)",
+    "acs/acs5/profile": "ACS 5 años, perfiles de datos (DP02–DP05)",
+    "acs/acs5/subject": "ACS 5 años, tablas temáticas (tablas S)",
+    "acs/acs1": "ACS 1 año, tablas detalladas (áreas de 65,000+ habitantes)",
+    "acs/acs1/profile": "ACS 1 año, perfiles de datos",
+    "dec/dhc": "Censo 2020: características demográficas y de vivienda",
+    "dec/pl": "Censo 2020: datos de redistribución (P.L. 94-171)",
+  },
+};
+const STATES = [["01","Alabama","AL"],["02","Alaska","AK"],["04","Arizona","AZ"],["05","Arkansas","AR"],["06","California","CA"],["08","Colorado","CO"],["09","Connecticut","CT"],["10","Delaware","DE"],["11","District of Columbia","DC"],["12","Florida","FL"],["13","Georgia","GA"],["15","Hawaii","HI"],["16","Idaho","ID"],["17","Illinois","IL"],["18","Indiana","IN"],["19","Iowa","IA"],["20","Kansas","KS"],["21","Kentucky","KY"],["22","Louisiana","LA"],["23","Maine","ME"],["24","Maryland","MD"],["25","Massachusetts","MA"],["26","Michigan","MI"],["27","Minnesota","MN"],["28","Mississippi","MS"],["29","Missouri","MO"],["30","Montana","MT"],["31","Nebraska","NE"],["32","Nevada","NV"],["33","New Hampshire","NH"],["34","New Jersey","NJ"],["35","New Mexico","NM"],["36","New York","NY"],["37","North Carolina","NC"],["38","North Dakota","ND"],["39","Ohio","OH"],["40","Oklahoma","OK"],["41","Oregon","OR"],["42","Pennsylvania","PA"],["44","Rhode Island","RI"],["45","South Carolina","SC"],["46","South Dakota","SD"],["47","Tennessee","TN"],["48","Texas","TX"],["49","Utah","UT"],["50","Vermont","VT"],["51","Virginia","VA"],["53","Washington","WA"],["54","West Virginia","WV"],["55","Wisconsin","WI"],["56","Wyoming","WY"],["72","Puerto Rico","PR"]];
+
+/* ===================================================================
+   Puerto Rico examples (shown in Help). year: null = newest available.
+   =================================================================== */
+const PR_EXAMPLES = [
+  { id: "pr-pop-income",
+    en: ["Population & median income, all 78 municipios", "Total population and median household income for every municipio, with margins of error."],
+    es: ["Población e ingreso mediano, los 78 municipios", "Población total e ingreso mediano del hogar de cada municipio, con márgenes de error."],
+    cfg: { dataset: "acs/acs5", variables: ["B01003_001E", "B19013_001E"], geography: "county", geo_filter: "*", within: { state: "72" }, include_moe: true, headers: "both", output: "pr_municipios_poblacion_ingreso.csv" } },
+  { id: "pr-big",
+    en: ["Municipios with 100,000+ people", "Same as above, filtered to the largest municipios (San Juan, Bayamón, Carolina, Ponce, Caguas…)."],
+    es: ["Municipios con 100,000+ habitantes", "Igual que el anterior, filtrado a los municipios más grandes (San Juan, Bayamón, Carolina, Ponce, Caguas…)."],
+    cfg: { dataset: "acs/acs5", variables: ["B01003_001E", "B19013_001E"], geography: "county", geo_filter: "*", within: { state: "72" }, include_moe: false, headers: "both", filters: ["B01003_001E >= 100000"], output: "pr_municipios_grandes.csv" } },
+  { id: "pr-poverty",
+    en: ["Poverty by municipio", "People for whom poverty status is determined (B17001_001E) and people below poverty (B17001_002E). Divide the second by the first for the rate."],
+    es: ["Pobreza por municipio", "Personas con estatus de pobreza determinado (B17001_001E) y personas bajo el nivel de pobreza (B17001_002E). Divida la segunda entre la primera para obtener la tasa."],
+    cfg: { dataset: "acs/acs5", variables: ["B17001_001E", "B17001_002E"], geography: "county", geo_filter: "*", within: { state: "72" }, include_moe: true, headers: "both", output: "pr_pobreza_municipios.csv" } },
+  { id: "pr-sj-tracts",
+    en: ["Census tracts in San Juan", "Population, median household income and median home value for every census tract in San Juan Municipio (code 127)."],
+    es: ["Sectores censales de San Juan", "Población, ingreso mediano del hogar y valor mediano de la vivienda de cada sector censal (tract) del Municipio de San Juan (código 127)."],
+    cfg: { dataset: "acs/acs5", variables: ["B01003_001E", "B19013_001E", "B25077_001E"], geography: "tract", geo_filter: "*", within: { state: "72", county: "127" }, include_moe: true, headers: "code", output: "pr_san_juan_tracts.csv" } },
+  { id: "pr-metro5",
+    en: ["Five largest municipios only", "Pick municipios by code: Bayamón 021, Caguas 025, Carolina 031, Ponce 113, San Juan 127."],
+    es: ["Solo los cinco municipios más grandes", "Elija municipios por código: Bayamón 021, Caguas 025, Carolina 031, Ponce 113, San Juan 127."],
+    cfg: { dataset: "acs/acs5", variables: ["B01003_001E", "B19013_001E", "B25077_001E"], geography: "county", geo_filter: "021,025,031,113,127", within: { state: "72" }, include_moe: true, headers: "both", output: "pr_cinco_municipios.csv" } },
+  { id: "pr-trend",
+    en: ["Compare 2019 with the newest year", "Population and median income per municipio for 2019 and the latest 5-year release, stacked with a year column."],
+    es: ["Comparar 2019 con el año más reciente", "Población e ingreso mediano por municipio para 2019 y la publicación de 5 años más reciente, en un solo archivo con columna de año."],
+    cfg: { dataset: "acs/acs5", years: [2019, "latest"], variables: ["B01003_001E", "B19013_001E"], geography: "county", geo_filter: "*", within: { state: "72" }, include_moe: false, headers: "both", output: "pr_comparacion_anios.csv" } },
+  { id: "pr-nativity",
+    en: ["Nativity & citizenship (PR-specific table)", "The whole Puerto Rico–specific table B05001PR (nativity and citizenship status in Puerto Rico) for every municipio."],
+    es: ["Nacimiento y ciudadanía (tabla específica de PR)", "La tabla específica de Puerto Rico B05001PR completa (nacimiento y ciudadanía en Puerto Rico) para cada municipio."],
+    cfg: { dataset: "acs/acs5", variables: [], groups: ["B05001PR"], geography: "county", geo_filter: "*", within: { state: "72" }, include_moe: false, headers: "both", output: "pr_nacimiento_ciudadania.csv" } },
+  { id: "pr-education",
+    en: ["Educational attainment, Puerto Rico total", "The whole table B15003 (education of people 25+) for Puerto Rico as a single row."],
+    es: ["Nivel educativo, total de Puerto Rico", "La tabla completa B15003 (escolaridad de personas de 25 años o más) para Puerto Rico en una sola fila."],
+    cfg: { dataset: "acs/acs5", variables: [], groups: ["B15003"], geography: "state", geo_filter: "72", include_moe: false, headers: "both", output: "pr_escolaridad.csv" } },
+];
+
+const PR_MUNICIPIOS = [["Aguadilla","005"],["Arecibo","013"],["Bayamón","021"],["Caguas","025"],["Carolina","031"],["Cataño","033"],["Fajardo","053"],["Guaynabo","061"],["Humacao","069"],["Mayagüez","097"],["Ponce","113"],["San Juan","127"],["Toa Baja","137"],["Trujillo Alto","139"],["Vega Baja","145"]];
+
+/* ===================================================================
+   Help content
+   =================================================================== */
+function helpHtml() {
+  const ex = PR_EXAMPLES.map((e, i) => {
+    const [name, desc] = e[LANG] || e.en;
+    const c = e.cfg;
+    const yrs = c.years ? c.years.map((y) => (y === "latest" ? (LANG === "es" ? "más reciente" : "latest") : y)).join(" + ") : (LANG === "es" ? "más reciente" : "latest");
+    const vars = [...(c.variables || []), ...(c.groups || []).map((g) => (LANG === "es" ? `tabla ${g}` : `table ${g}`))].join(", ");
+    const geo = `${c.geography}:${c.geo_filter}` + (c.within ? " · " + Object.entries(c.within).map(([k, v]) => `${k}:${v}`).join(" ") : "");
+    return `<div class="example"><h4>${esc(name)}</h4><p>${esc(desc)}</p>
+      <div class="spec"><code>${esc(c.dataset)}</code> · ${esc(yrs)}<br>${esc(vars)}<br><code>${esc(geo)}</code>${c.filters ? `<br>${esc(c.filters.join(" · "))}` : ""}</div>
+      <button class="primary" data-example="${i}">${esc(t("loadExample"))}</button></div>`;
+  }).join("");
+  const muni = `<table style="max-width:420px"><thead><tr><th>Municipio</th><th>${LANG === "es" ? "Código" : "Code"}</th></tr></thead><tbody>${
+    PR_MUNICIPIOS.map(([n, c]) => `<tr><td>${esc(n)}</td><td><code>${c}</code></td></tr>`).join("")}</tbody></table>`;
+
+  if (LANG === "es") return `
+    <nav class="help-nav"><a href="#h-start">Inicio rápido</a><a href="#h-pr">Puerto Rico</a><a href="#h-ex">Ejemplos de PR</a><a href="#h-filters">Filtros</a><a href="#h-bounds">Límites y mapas</a><a href="#h-trouble">Problemas comunes</a></nav>
+    <h3 id="h-start">Inicio rápido</h3>
+    <ol>
+      <li><b>Clave de la API:</b> obtenga una gratis en <a href="https://api.census.gov/data/key_signup.html" target="_blank" rel="noopener">api.census.gov/data/key_signup.html</a>, pulse el enlace de activación del correo y péguela en la barra lateral.</li>
+      <li><b>Conjunto de datos y año:</b> para Puerto Rico use normalmente <code>acs/acs5</code> (ACS de 5 años). La lista de años solo muestra los años que existen.</li>
+      <li><b>Variables:</b> busque palabras en inglés (las etiquetas del Censo están en inglés), marque las que desee y pulse <i>Agregar variables marcadas</i>, o agregue una tabla completa.</li>
+      <li><b>Geografía:</b> elija el nivel (por ejemplo <i>county</i> = municipio) y el área superior (estado <b>Puerto Rico (72)</b>).</li>
+      <li><b>Extraer:</b> en la pestaña 5 pulse <i>Ejecutar extracción</i> y descargue el CSV, el diccionario de datos y la configuración.</li>
+    </ol>
+    <h3 id="h-pr">Datos de Puerto Rico: lo esencial</h3>
+    <ul>
+      <li><b>🇵🇷 Solo Puerto Rico</b> (barra lateral, activado por defecto): todas las búsquedas y descargas se limitan a áreas de Puerto Rico y se ocultan los niveles que no pueden limitarse a Puerto Rico. Los códigos postales (ZCTA) y las áreas metropolitanas se descargan completos y luego se conservan solo los de Puerto Rico. Desmárquelo para trabajar con otros estados.</li>
+      <li><b>🇵🇷 Solo tablas específicas de Puerto Rico</b> (pestaña 2, activado por defecto): la búsqueda muestra solo las tablas que el Censo publica únicamente para Puerto Rico; sus códigos terminan en <code>PR</code> (p. ej. <code>B05001PR</code>, <code>B06004APR</code>, <code>DP02PR</code>). Desmárquelo para ver todas las variables: las tablas generales (como <code>B01003</code> o <code>B19013</code>) también incluyen a Puerto Rico.</li>
+      <li>Puerto Rico tiene el código de estado <code>72</code>. En las geografías elija <b>Puerto Rico (72)</b>.</li>
+      <li>Los <b>municipios</b> equivalen a condados: use el nivel <code>county</code> dentro del estado 72. Hay 78 municipios.</li>
+      <li>Niveles más pequeños: <code>county subdivision</code> (barrios), <code>tract</code> (sectores censales) y <code>block group</code> (grupos de bloques).</li>
+      <li>Los datos de Puerto Rico vienen de la <b>Encuesta sobre la Comunidad de Puerto Rico (PRCS)</b>, que forma parte del ACS; por eso se usan los mismos conjuntos de datos y códigos de variables (<code>acs/acs5</code>, <code>B01003_001E</code>, etc.).</li>
+      <li><b>Use el ACS de 5 años</b> para los municipios: el de 1 año (<code>acs/acs1</code>) solo cubre los municipios de 65,000 habitantes o más.</li>
+      <li>Para un municipio específico, escriba su código en «¿Qué county?» o en el área superior. Códigos de algunos municipios:</li>
+    </ul>
+    ${muni}
+    <p class="hint">Para la lista completa de los 78 códigos, haga una extracción con el nivel <code>county</code> dentro de Puerto Rico: los códigos aparecen en la columna <code>county</code>.</p>
+    <h3 id="h-ex">Ejemplos de Puerto Rico</h3>
+    <p>Pulse <b>Cargar este ejemplo</b>: se llenan todas las pestañas automáticamente. Después vaya a la pestaña 5 y pulse <i>Ejecutar extracción</i> (necesita su clave de la API).</p>
+    <div class="examples">${ex}</div>
+    <h3 id="h-filters">Filtros de filas</h3>
+    <p>Un filtro por línea; las filas deben cumplir todos. Use los códigos de las variables descargadas. Las palabras clave van en inglés:</p>
+    <table><thead><tr><th>Objetivo</th><th>Filtro</th></tr></thead><tbody>
+      <tr><td>Población de al menos 50,000</td><td><code>B01003_001E &gt;= 50000</code></td></tr>
+      <tr><td>Ingreso mediano menor de $25,000</td><td><code>B19013_001E &lt; 25000</code></td></tr>
+      <tr><td>Entre dos valores</td><td><code>B25077_001E between 100000 and 200000</code></td></tr>
+      <tr><td>Que tenga valor (no vacío)</td><td><code>B19013_001E is not blank</code></td></tr>
+      <tr><td>Nombre que contiene un texto</td><td><code>NAME contains San Juan</code></td></tr>
+      <tr><td>Excluir un texto</td><td><code>NAME not contains Culebra</code></td></tr>
+    </tbody></table>
+    <h3 id="h-bounds">Límites y mapas</h3>
+    <p>Después de ejecutar una extracción, la sección <b>🗺 Límites</b> de la pestaña 5 descarga las formas geográficas de las mismas áreas desde <b>TIGERweb</b>, el servicio de mapas de la Oficina del Censo, y les une sus datos por <code>GEOID</code>.</p>
+    <ul>
+      <li><b>Simplificados, recortados a la costa:</b> mejor para mapas temáticos; las costas de Puerto Rico se ven bien y los archivos son pequeños. No los use para análisis espacial preciso.</li>
+      <li><b>Detalle completo (TIGER/Line):</b> los límites oficiales completos; incluyen áreas de agua y los archivos son más grandes.</li>
+      <li><b>GeoJSON:</b> un solo archivo; se abre en QGIS, ArcGIS Pro, Mapbox, Leaflet o geojson.io.</li>
+      <li><b>Shapefile (.zip):</b> contiene .shp, .shx, .dbf, .prj y .cpg. Los nombres de campo del .dbf tienen como máximo 10 caracteres (p. ej. <code>B01003_001E</code> → <code>B01003001E</code>); el archivo <code>_fields.csv</code> incluido indica qué es cada campo.</li>
+      <li><b>Año de los límites:</b> se usan los límites del mismo año que los datos (p. ej. ACS 2024 → límites del 1 de enero de 2024). Los sectores censales cambiaron después del Censo 2020; al combinar años, los archivos de límites usan los valores del año más reciente.</li>
+      <li><b>Mapa de vista previa:</b> elija una variable para colorear; pase el cursor sobre un área para ver su valor y margen de error.</li>
+    </ul>
+    <h3 id="h-trouble">Problemas comunes</h3>
+    <ul>
+      <li><b>«No se pudo conectar con la API del Censo»:</b> revise su internet; pruebe otro navegador o desactive bloqueadores de anuncios para esta página.</li>
+      <li><b>«rechazó la clave»:</b> copie la clave exactamente y confirme que pulsó el enlace de activación del correo.</li>
+      <li><b>«no está disponible para AÑO»:</b> ese conjunto no existe para ese año; elija otro año de la lista.</li>
+      <li><b>Celdas vacías:</b> el Censo no publica un estimado confiable para esa celda (común en áreas pequeñas).</li>
+      <li><b>CSV en Excel:</b> el archivo usa UTF-8 con BOM, así que los acentos (Bayamón, Mayagüez) se ven correctamente.</li>
+    </ul>`;
+
+  return `
+    <nav class="help-nav"><a href="#h-start">Quick start</a><a href="#h-pr">Puerto Rico</a><a href="#h-ex">PR examples</a><a href="#h-filters">Filters</a><a href="#h-bounds">Boundaries &amp; maps</a><a href="#h-trouble">Troubleshooting</a></nav>
+    <h3 id="h-start">Quick start</h3>
+    <ol>
+      <li><b>API key:</b> get a free one at <a href="https://api.census.gov/data/key_signup.html" target="_blank" rel="noopener">api.census.gov/data/key_signup.html</a>, click the activation link in the email, and paste it in the sidebar.</li>
+      <li><b>Dataset and year:</b> for Puerto Rico you'll usually want <code>acs/acs5</code> (ACS 5-year). The Year list only shows years that exist.</li>
+      <li><b>Variables:</b> search by keyword, tick what you want and click <i>Add checked variables</i>, or add a whole table.</li>
+      <li><b>Geography:</b> choose the level (e.g. <i>county</i> = municipio) and the parent area (state <b>Puerto Rico (72)</b>).</li>
+      <li><b>Extract:</b> on tab 5 click <i>Run extraction</i>, then download the CSV, the data dictionary and your settings.</li>
+    </ol>
+    <h3 id="h-pr">Puerto Rico data: the essentials</h3>
+    <ul>
+      <li><b>🇵🇷 Puerto Rico only</b> (sidebar, on by default): every search and download is limited to Puerto Rico areas, and levels that can't be limited to Puerto Rico are hidden. ZIP code areas (ZCTAs) and metro areas are downloaded in full and then trimmed to Puerto Rico's. Untick it to work with other states.</li>
+      <li><b>🇵🇷 Only Puerto Rico–specific tables</b> (tab 2, on by default): search shows only the tables the Census publishes just for Puerto Rico; their codes end in <code>PR</code> (e.g. <code>B05001PR</code>, <code>B06004APR</code>, <code>DP02PR</code>). Untick it to see every variable: the general tables (like <code>B01003</code> or <code>B19013</code>) cover Puerto Rico too.</li>
+      <li>Puerto Rico's state code is <code>72</code>. In the geography pickers choose <b>Puerto Rico (72)</b>.</li>
+      <li><b>Municipios</b> are county-equivalents: use the <code>county</code> level inside state 72. There are 78 municipios.</li>
+      <li>Smaller levels: <code>county subdivision</code> (barrios), <code>tract</code> (census tracts) and <code>block group</code>.</li>
+      <li>Puerto Rico data comes from the <b>Puerto Rico Community Survey (PRCS)</b>, which is part of the ACS, so it uses the same datasets and variable codes (<code>acs/acs5</code>, <code>B01003_001E</code>, …).</li>
+      <li><b>Use ACS 5-year</b> for municipios: 1-year data (<code>acs/acs1</code>) only covers municipios with 65,000+ people.</li>
+      <li>For one municipio, type its code in "Which county?" or as the parent area. Codes for some municipios:</li>
+    </ul>
+    ${muni}
+    <p class="hint">For all 78 codes, run an extract at the <code>county</code> level inside Puerto Rico. The codes appear in the <code>county</code> column.</p>
+    <h3 id="h-ex">Puerto Rico examples</h3>
+    <p>Click <b>Load this example</b> to fill in every tab automatically, then go to tab 5 and click <i>Run extraction</i> (your API key is needed).</p>
+    <div class="examples">${ex}</div>
+    <h3 id="h-filters">Row filters</h3>
+    <p>One filter per line; rows must match all of them. Use the codes of downloaded variables:</p>
+    <table><thead><tr><th>Goal</th><th>Filter</th></tr></thead><tbody>
+      <tr><td>Population at least 50,000</td><td><code>B01003_001E &gt;= 50000</code></td></tr>
+      <tr><td>Median income under $25,000</td><td><code>B19013_001E &lt; 25000</code></td></tr>
+      <tr><td>Between two values</td><td><code>B25077_001E between 100000 and 200000</code></td></tr>
+      <tr><td>Has a value (not blank)</td><td><code>B19013_001E is not blank</code></td></tr>
+      <tr><td>Name contains text</td><td><code>NAME contains San Juan</code></td></tr>
+      <tr><td>Exclude text</td><td><code>NAME not contains Culebra</code></td></tr>
+    </tbody></table>
+    <h3 id="h-bounds">Boundaries &amp; maps</h3>
+    <p>After you run an extraction, the <b>🗺 Boundaries</b> section on tab 5 downloads the shapes of the same areas from <b>TIGERweb</b>, the Census Bureau's map service, and joins your data to them by <code>GEOID</code>.</p>
+    <ul>
+      <li><b>Simplified, clipped to shoreline:</b> best for thematic maps; Puerto Rico's coastlines look right and files are small. Don't use these for precise spatial analysis.</li>
+      <li><b>Full detail (TIGER/Line):</b> the full official boundaries; they include water areas and the files are larger.</li>
+      <li><b>GeoJSON:</b> one file; opens in QGIS, ArcGIS Pro, Mapbox, Leaflet or geojson.io.</li>
+      <li><b>Shapefile (.zip):</b> contains .shp, .shx, .dbf, .prj and .cpg. Field names in the .dbf can be at most 10 characters (e.g. <code>B01003_001E</code> → <code>B01003001E</code>); the included <code>_fields.csv</code> tells you what each field is.</li>
+      <li><b>Boundary year:</b> boundaries match the data year (e.g. ACS 2024 → boundaries as of January 1, 2024). Census tracts were redrawn after the 2020 Census; when you stack years, the boundary files use the newest year's values.</li>
+      <li><b>Preview map:</b> pick a variable to shade by; hover over an area to see its value and margin of error.</li>
+    </ul>
+    <h3 id="h-trouble">Troubleshooting</h3>
+    <ul>
+      <li><b>"Could not reach the Census API":</b> check your internet; try another browser or turn off ad blockers for this page.</li>
+      <li><b>"rejected the API key":</b> paste the key exactly and confirm you clicked the activation link in the email.</li>
+      <li><b>"isn't available for YEAR":</b> that dataset doesn't exist for that year; pick another year from the list.</li>
+      <li><b>Blank cells:</b> the Census Bureau has no reliable estimate for that cell (common for small areas).</li>
+      <li><b>Excel:</b> the CSV is saved as UTF-8 with BOM, so accents (Bayamón, Mayagüez) display correctly.</li>
+    </ul>`;
+}
+
+/* ===================================================================
+   State
+   =================================================================== */
+const S = {
+  catalogue: [], catalogueOk: false, dataset: "acs/acs5", year: null, extraYears: new Set(),
+  selected: new Map(), groups: new Map(), meta: new Map(), vars: [], groupsList: [], geos: [],
+  geoIndex: 0, geoName: null, geoFilterText: "*", geoFilterStates: new Set(), parentValues: {}, parentStates: new Set(),
+  result: null, pendingSettings: null, varsStatus: null, geoStatus: null, catStatus: null,
+  prOnly: true, prTables: true,
+};
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const msg = (kind, text) => `<div class="msg ${kind}">${esc(text)}</div>`;
+const loading = (text) => `<div class="msg info"><span class="spinner"></span>${esc(text)}</div>`;
+
+class CensusError extends Error {}
+class NotFound extends CensusError {}
+
+/* ===================================================================
+   API helpers
+   =================================================================== */
+function apiKey() { return $("apiKey").value.trim(); }
+
+function buildUrl(url, params, withKey) {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(params || {})) p.set(k, v);
+  if (withKey && apiKey()) p.set("key", apiKey());
+  const qs = p.toString();
+  return qs ? `${url}?${qs}` : url;
+}
+
+function htmlToText(s, limit = 300) {
+  return String(s || "").replace(/<(style|script)[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, limit);
+}
+
+async function apiGet(url, params = {}, requireKey = true) {
+  if (requireKey && !apiKey()) throw new CensusError(t("errKeyRequired"));
+  const shown = buildUrl(url, params, false);
+  let resp;
+  try { resp = await fetch(buildUrl(url, params, true)); }
+  catch (e) { throw new CensusError(t("errUnreachable", { url: shown })); }
+  if (resp.status === 204) return [];
+  const text = await resp.text();
+  if (resp.status === 404) throw new NotFound(t("err404", { url: shown }));
+  if (!resp.ok) throw new CensusError(t("errHttp", { s: resp.status, t: htmlToText(text, 400), url: shown }));
+  try { return JSON.parse(text); }
+  catch {
+    const snip = htmlToText(text);
+    if (/key/i.test(snip)) throw new CensusError(t("errBadKey", { t: snip }));
+    throw new CensusError(t("errNonJson", { t: snip, url: shown }));
+  }
+}
+
+async function metadata(url) {
+  if (S.meta.has(url)) return S.meta.get(url);
+  const p = apiGet(url, {}, false);
+  S.meta.set(url, p);
+  try { return await p; } catch (e) { S.meta.delete(url); throw e; }
+}
+
+const dsUrl = (dataset, year) => `${API}/${year}/${dataset.replace(/^\/+|\/+$/g, "")}`;
+const cleanLabel = (l) => String(l || "").split("!!").map((p) => p.trim().replace(/:$/, "")).filter(Boolean).join(" > ");
+const isAnnotation = (label) => /^annotation of/i.test(label);
+
+async function loadCatalogue() {
+  const data = await metadata(API + ".json");
+  return (data.dataset || []).filter((d) => !d.c_isTimeseries && d.c_vintage != null)
+    .map((d) => ({ year: Number(d.c_vintage), dataset: (d.c_dataset || []).join("/"), title: d.title || "" }));
+}
+
+async function loadVariables(dataset, year) {
+  const data = await metadata(dsUrl(dataset, year) + "/variables.json");
+  const out = [];
+  for (const [name, v] of Object.entries(data.variables || {})) {
+    if (RESERVED.has(name)) continue;
+    const label = cleanLabel(v.label);
+    const concept = String(v.concept || "").trim();
+    out.push({ name, label, concept, group: v.group || "N/A", ptype: v.predicateType || "", hay: `${name} ${label} ${concept}`.toLowerCase() });
+  }
+  out.sort((a, b) => a.name.localeCompare(b.name));
+  return out;
+}
+
+async function loadGroups(dataset, year) {
+  try {
+    const data = await metadata(dsUrl(dataset, year) + "/groups.json");
+    return (data.groups || []).map((g) => ({ group: g.name, description: g.description || "" }))
+      .sort((a, b) => a.group.localeCompare(b.group));
+  } catch (e) { if (e instanceof NotFound) return []; throw e; }
+}
+
+async function loadGeos(dataset, year) {
+  const data = await metadata(dsUrl(dataset, year) + "/geography.json");
+  return (data.fips || []).map((g) => ({ name: g.name, requires: g.requires || [], wildcard: g.wildcard || [] }));
+}
+
+function yearsFor(dataset) {
+  return [...new Set(S.catalogue.filter((d) => d.dataset === dataset).map((d) => d.year))].sort((a, b) => b - a);
+}
+
+function yearRanges(years) {
+  const ys = [...years].sort((a, b) => a - b), out = [];
+  let start = null, prev = null;
+  for (const y of ys) {
+    if (start === null) { start = prev = y; }
+    else if (y === prev + 1) { prev = y; }
+    else { out.push(start === prev ? `${start}` : `${start}-${prev}`); start = prev = y; }
+  }
+  if (start !== null) out.push(start === prev ? `${start}` : `${start}-${prev}`);
+  return out.join(", ");
+}
+
+function checkAvailable(dataset, year) {
+  if (!S.catalogueOk) return;
+  const ys = yearsFor(dataset);
+  if (!ys.length) throw new NotFound(t("errNotInCatalogue", { ds: dataset }));
+  if (!ys.includes(Number(year))) throw new NotFound(t("errNotAvailable", { ds: dataset, yr: year, r: yearRanges(ys), latest: ys[0] }));
+}
+
+function resolveState(value) {
+  return String(value).split(",").map((p) => p.trim()).filter(Boolean).map((p) => {
+    if (p === "*") return "*";
+    if (/^\d+$/.test(p)) return p.padStart(2, "0");
+    const hit = STATES.find(([f, n, a]) => a.toLowerCase() === p.toLowerCase() || n.toLowerCase() === p.toLowerCase());
+    if (!hit) throw new CensusError(t("errUnknownState", { s: p }));
+    return hit[0];
+  }).join(",");
+}
+
+/* ===================================================================
+   Extraction
+   =================================================================== */
+async function expandVariables(dataset, year, variables, groups, includeMoe, strict, warnings) {
+  const meta = await loadVariables(dataset, year);
+  const known = new Map(meta.map((v) => [v.name, v]));
+  const wanted = [];
+  for (const g of groups) {
+    let names = meta.filter((v) => v.group === g && !isAnnotation(v.label)).map((v) => v.name);
+    if (!names.length) {
+      const m = t("errTableNotFound", { g, ds: dataset, yr: year });
+      if (strict) throw new CensusError(m);
+      warnings.push(m + t("skipped")); continue;
+    }
+    if (!includeMoe) names = names.filter((n) => !(n.endsWith("M") && known.has(n.slice(0, -1) + "E")));
+    wanted.push(...names);
+  }
+  const missing = [];
+  for (const v of variables) {
+    if (known.has(v)) wanted.push(v);
+    else if (known.has(v.toUpperCase())) wanted.push(v.toUpperCase());
+    else missing.push(v);
+  }
+  if (missing.length) {
+    const m = t("errVarsNotFound", { ds: dataset, yr: year, list: missing.join(", ") });
+    if (strict) throw new CensusError(m);
+    warnings.push(m + t("skipped"));
+  }
+  const final = [], seen = new Set();
+  for (const v of wanted) {
+    if (seen.has(v)) continue;
+    final.push(v); seen.add(v);
+    if (includeMoe && v.endsWith("E")) {
+      const m = v.slice(0, -1) + "M";
+      if (known.has(m) && !seen.has(m)) { final.push(m); seen.add(m); }
+    }
+  }
+  if (!final.length) throw new CensusError(t("errNoValid"));
+  return { variables: final, meta: known };
+}
+
+async function fetchData(dataset, year, variables, forGeo, inGeo, log) {
+  const size = MAX_VARS - 1;
+  const chunks = [];
+  for (let i = 0; i < variables.length; i += size) chunks.push(variables.slice(i, i + size));
+  let geoCols = [];
+  const rowsByKey = new Map(), order = [];
+  for (let i = 0; i < chunks.length; i++) {
+    const get = (i === 0 ? ["NAME"] : []).concat(chunks[i]);
+    const params = { get: get.join(","), for: forGeo };
+    if (inGeo) params.in = inGeo;
+    log(t("logBatch", { yr: year, i: i + 1, n: chunks.length, k: chunks[i].length }));
+    const rows = await apiGet(dsUrl(dataset, year), params, true);
+    if (!rows.length) return { geoCols: [], rows: [] };
+    const h = rows[0];
+    if (i === 0) geoCols = h.filter((c) => !get.includes(c));
+    const gIdx = geoCols.map((c) => h.indexOf(c));
+    for (const r of rows.slice(1)) {
+      const key = gIdx.map((j) => r[j]).join("|");
+      let rec = rowsByKey.get(key);
+      if (!rec) { rec = {}; rowsByKey.set(key, rec); order.push(key); }
+      h.forEach((c, j) => { rec[c] = r[j]; });
+    }
+  }
+  return { geoCols, rows: order.map((k) => rowsByKey.get(k)) };
+}
+
+function cleanRows(raw, variables, meta) {
+  const geoCols = raw.geoCols || [];
+  const numeric = {};
+  for (const v of variables) {
+    const pt = meta.get(v)?.ptype;
+    numeric[v] = pt === "int" || pt === "float" ||
+      raw.rows.every((r) => r[v] == null || r[v] === "" || !isNaN(Number(r[v])));
+  }
+  const allDigits = geoCols.length && raw.rows.length && raw.rows.every((r) => geoCols.every((c) => /^\d+$/.test(String(r[c] ?? ""))));
+  const columns = [...(allDigits ? ["GEOID"] : []), "NAME", ...geoCols, ...variables];
+  const rows = raw.rows.map((r) => {
+    const o = {};
+    if (allDigits) o.GEOID = geoCols.map((c) => r[c]).join("");
+    o.NAME = r.NAME; for (const c of geoCols) o[c] = r[c];
+    for (const v of variables) {
+      let val = r[v];
+      if (numeric[v]) {
+        const n = (val == null || val === "") ? null : Number(val);
+        val = n == null || isNaN(n) || SENTINELS.has(n) ? null : n;
+      }
+      o[v] = val;
+    }
+    return o;
+  });
+  return { columns, rows };
+}
+
+function parseFilter(line, columns) {
+  const f = line.trim();
+  let m;
+  const need = (col) => { if (!columns.includes(col)) throw new CensusError(t("errFilterUses", { f, col })); };
+  const num = (s) => { const n = Number(String(s).replace(/,/g, "")); if (isNaN(n)) throw new CensusError(t("errNotNumber", { f, s })); return n; };
+  if ((m = f.match(/^([A-Za-z_][\w]*)\s*(>=|<=|==|!=|=|>|<)\s*(-?[\d.,]+(?:e[+-]?\d+)?)$/i))) {
+    const [, col, op, v] = m; need(col); const x = num(v);
+    const cmp = { ">=": (a) => a >= x, "<=": (a) => a <= x, ">": (a) => a > x, "<": (a) => a < x, "==": (a) => a === x, "=": (a) => a === x, "!=": (a) => a !== x }[op];
+    return (r) => r[col] != null && r[col] !== "" && cmp(Number(r[col]));
+  }
+  if ((m = f.match(/^([A-Za-z_][\w]*)\s+between\s+(-?[\d.,]+)\s+and\s+(-?[\d.,]+)$/i))) {
+    const [, col, a, b] = m; need(col); const lo = num(a), hi = num(b);
+    return (r) => r[col] != null && r[col] !== "" && Number(r[col]) >= lo && Number(r[col]) <= hi;
+  }
+  if ((m = f.match(/^([A-Za-z_][\w]*)\s+is\s+(not\s+)?blank$/i))) {
+    const [, col, not] = m; need(col);
+    return (r) => (r[col] == null || r[col] === "") !== Boolean(not);
+  }
+  if ((m = f.match(/^([A-Za-z_][\w]*)\s+(not\s+contains|contains|starts\s+with)\s+["']?(.*?)["']?$/i))) {
+    const [, col, op, text] = m; need(col); const x = text.toLowerCase(); const o = op.toLowerCase().replace(/\s+/g, " ");
+    return (r) => { const s = String(r[col] ?? "").toLowerCase();
+      return o === "contains" ? s.includes(x) : o === "not contains" ? !s.includes(x) : s.startsWith(x); };
+  }
+  if ((m = f.match(/^([A-Za-z_][\w]*)\s*(==|=|!=)\s*["'](.*)["']$/))) {
+    const [, col, op, text] = m; need(col);
+    return (r) => (String(r[col] ?? "") === text) === (op !== "!=");
+  }
+  throw new CensusError(t("errFilterUnknown", { f }));
+}
+
+async function runExtract(req, log) {
+  const warnings = [];
+  const multi = req.years.length > 1;
+  const forGeo = `${req.geography}:${req.geography === "state" ? resolveState(req.geo_filter || "*") : (req.geo_filter || "*")}`;
+  const inParts = [];
+  for (const [lvl, val] of Object.entries(req.within || {})) {
+    if (!String(val).trim()) throw new CensusError(t("errNoParent", { lvl }));
+    inParts.push(`${lvl}:${lvl === "state" ? resolveState(val) : String(val).trim()}`);
+  }
+  const inGeo = inParts.join(" ");
+  const dict = new Map();
+  let columns = [], rows = [];
+  for (const year of req.years) {
+    try { checkAvailable(req.dataset, year); }
+    catch (e) { if (!multi || !(e instanceof NotFound)) throw e; warnings.push(t("skippedYear", { yr: year, m: e.message })); continue; }
+    log(t("logLoadingVars", { yr: year, ds: req.dataset }));
+    const { variables, meta } = await expandVariables(req.dataset, year, req.variables, req.groups, req.include_moe, !multi, warnings);
+    const raw = await fetchData(req.dataset, year, variables, forGeo, inGeo, log);
+    const clean = cleanRows(raw, variables, meta);
+    if (multi) { clean.columns.unshift("year"); clean.rows.forEach((r) => { r.year = year; }); }
+    for (const c of clean.columns) if (!columns.includes(c)) columns.push(c);
+    rows = rows.concat(clean.rows);
+    for (const v of variables) { const m = meta.get(v); dict.set(v, { code: v, label: m.label, concept: m.concept, table: m.group }); }
+  }
+  if (!columns.length) throw new CensusError(t("errNoneAvailable") + warnings.join(" "));
+  const varCols = columns.filter((c) => dict.has(c));
+  columns = columns.filter((c) => !dict.has(c)).concat(varCols);
+
+  if (req.pr_filter) {
+    const before = rows.length;
+    const zc = "zip code tabulation area";
+    rows = rows.filter((r) => req.geography === zc ? /^00[679]/.test(String(r[zc] ?? "")) : /\bPR\b|Puerto Rico/.test(String(r.NAME ?? "")));
+    log(t("logPrFilter", { a: fmtNum(rows.length), b: fmtNum(before) }));
+  }
+  for (const line of req.filters) {
+    if (!line.trim()) continue;
+    const before = rows.length;
+    rows = rows.filter(parseFilter(line, columns));
+    log(t("logFilter", { f: line.trim(), a: rows.length, b: before }));
+  }
+
+  const headerNames = {}, used = new Set();
+  for (const c of columns) {
+    let name = c;
+    if (dict.has(c) && req.headers !== "code") {
+      const d = dict.get(c);
+      name = req.headers === "label" ? (d.concept ? `${titleCase(d.concept)}: ${d.label}` : d.label) : `${d.label} [${c}]`;
+      if (used.has(name)) name = `${name} [${c}]`;
+    }
+    used.add(name); headerNames[c] = name;
+  }
+  log(t("logDone", { r: rows.length, c: columns.length }));
+  return { columns, headerNames, rows, dictionary: varCols.map((c) => dict.get(c)), warnings };
+}
+
+const titleCase = (s) => s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+
+/* ===================================================================
+   CSV + downloads
+   =================================================================== */
+function csvCell(v) {
+  if (v == null) return "";
+  const s = String(v);
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+function toCsv(header, rows) {
+  return "﻿" + [header.map(csvCell).join(","), ...rows.map((r) => r.map(csvCell).join(","))].join("\r\n") + "\r\n";
+}
+function download(filename, text, type) {
+  const blob = new Blob([text], { type });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+const outBase = () => ($("outName").value.trim() || "census_extract.csv").replace(/\.csv$/i, "");
+
+/* ===================================================================
+   Language
+   =================================================================== */
+function storageGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
+function storageSet(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { /* storage unavailable */ } }
+
+function applyStaticText() {
+  document.documentElement.lang = LANG;
+  document.title = t("title").replace(/^\S+\s/, "");
+  document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll("[data-i18n-html]").forEach((el) => { el.innerHTML = t(el.dataset.i18nHtml); });
+  document.querySelectorAll("[data-i18n-ph]").forEach((el) => { el.placeholder = t(el.dataset.i18nPh); });
+  document.querySelectorAll("[data-i18n-title]").forEach((el) => { el.title = t(el.dataset.i18nTitle); });
+  $("langBtn").textContent = t("langBtn");
+  document.querySelectorAll(".js-lang").forEach((b) => { b.textContent = t("langBtn"); });
+  $("toggleKey").textContent = $("apiKey").type === "password" ? t("show") : t("hide");
+}
+
+function setLang(lang) {
+  LANG = lang === "es" ? "es" : "en";
+  storageSet("censusLang", LANG);
+  applyStaticText();
+  // re-render everything that holds translated text
+  renderDatasetOptions(); renderYears(); renderStatusBoxes();
+  renderVarResults(); renderGroupResults(); renderSelection();
+  if (S.geos.length) renderGeoInputs();
+  renderRunSummary();
+  if (S.result) { $("runMsgs").innerHTML = S.result.warnings.map((w) => msg("warn", w)).join("") +
+      msg("ok", t("complete", { r: fmtNum(S.result.rows.length), c: S.result.columns.length })); renderPreview(); renderBoundaryPanel(); }
+  if ($("help").open) renderHelp();
+}
+
+/* status boxes are stored as data so they can be re-rendered in the new language */
+function renderStatusBoxes() {
+  const box = (st) => !st ? "" : st.kind === "loading" ? loading(t(st.key, st.vars)) :
+    st.kind === "stat" ? `<div class="stat">${esc(t(st.key, st.vars))}</div>` : msg(st.kind, st.text ?? t(st.key, st.vars));
+  $("varsLoading").innerHTML = box(S.varsStatus);
+  $("geoLoading").innerHTML = box(S.geoStatus);
+  if (S.catStatus) $("catalogueMsg").innerHTML = box(S.catStatus);
+}
+
+/* ===================================================================
+   UI: sidebar
+   =================================================================== */
+function renderDatasetOptions() {
+  const sel = $("dataset");
+  const common = COMMON[LANG];
+  const titles = new Map();
+  for (const d of [...S.catalogue].sort((a, b) => b.year - a.year)) if (!titles.has(d.dataset)) titles.set(d.dataset, d.title);
+  let opts;
+  if ($("showAll").checked && titles.size) opts = [...titles.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([d, tt]) => [d, common[d] || tt]);
+  else opts = Object.entries(common).filter(([d]) => !S.catalogueOk || titles.has(d));
+  if (!opts.length) opts = Object.entries(common);
+  sel.innerHTML = opts.map(([d, tt]) => `<option value="${esc(d)}">${esc(d)} — ${esc(tt)}</option>`).join("");
+  sel.value = opts.some(([d]) => d === S.dataset) ? S.dataset : opts[0][0];
+}
+
+function currentDataset() {
+  const c = $("customDataset").value.trim().replace(/^\/+|\/+$/g, "");
+  return c || $("dataset").value;
+}
+
+function renderYears() {
+  S.dataset = currentDataset();
+  let ys = yearsFor(S.dataset);
+  const known = ys.length > 0;
+  S.catStatus = null;
+  let html = "";
+  if (!known) {
+    if (S.catalogueOk) html = msg("err", t("notInCatalogueUi", { ds: S.dataset }));
+    const now = new Date().getFullYear();
+    ys = []; for (let y = now - 1; y >= 2009; y--) ys.push(y);
+  }
+  const sel = $("year");
+  const keep = S.year && ys.includes(S.year) ? S.year : ys[0];
+  sel.innerHTML = ys.map((y) => `<option>${y}</option>`).join("");
+  sel.value = String(keep);
+  S.year = Number(sel.value);
+  S.extraYears = new Set([...S.extraYears].filter((y) => ys.includes(y) && y !== S.year));
+  $("extraYears").innerHTML = ys.filter((y) => y !== S.year).map((y) =>
+    `<label><input type="checkbox" value="${y}" ${S.extraYears.has(y) ? "checked" : ""}> ${y}</label>`).join("") || '<span class="muted">—</span>';
+  if (S.catalogueOk && known && ys.length > 1) html += `<div class="stat">${esc(t("available", { r: yearRanges(ys) }))}</div>`;
+  if (S.flash) html = msg(S.flash.kind, S.flash.text) + html;
+  $("catalogueMsg").innerHTML = html;
+}
+
+function flash(kind, text) {
+  S.flash = { kind, text };
+  renderYears();
+  clearTimeout(flash.timer);
+  flash.timer = setTimeout(() => { S.flash = null; renderYears(); }, 7000);
+}
+
+function renderSelectionStat() { $("selStat").innerHTML = t("selStat", { v: S.selected.size, g: S.groups.size }); }
+
+/* ===================================================================
+   UI: variables tab
+   =================================================================== */
+let varsToken = 0;
+async function refreshMetadata() {
+  const token = ++varsToken;
+  const ds = S.dataset, yr = S.year;
+  S.varsStatus = { kind: "loading", key: "loadingVars", vars: { ds, yr } };
+  S.geoStatus = { kind: "loading", key: "loadingGeos" };
+  renderStatusBoxes();
+  S.vars = []; S.groupsList = [];
+  try {
+    const [vars, groups] = await Promise.all([loadVariables(ds, yr), loadGroups(ds, yr)]);
+    if (token !== varsToken) return;
+    S.vars = vars.filter((v) => !isAnnotation(v.label));
+    S.groupsList = groups;
+    S.varsStatus = { kind: "stat", key: "varsLoaded", vars: { v: fmtNum(S.vars.length), g: fmtNum(groups.length), ds, yr } };
+  } catch (e) {
+    if (token !== varsToken) return;
+    S.varsStatus = { kind: "err", text: e.message };
+  }
+  renderStatusBoxes(); renderVarResults(); renderGroupResults();
+  try {
+    const geos = await loadGeos(ds, yr);
+    if (token !== varsToken) return;
+    S.geos = geos.length ? geos : [{ name: "state", requires: [], wildcard: [] }];
+    S.geoStatus = null;
+  } catch (e) {
+    if (token !== varsToken) return;
+    S.geos = [{ name: "state", requires: [], wildcard: [] }];
+    S.geoStatus = { kind: "err", text: e.message };
+  }
+  renderStatusBoxes();
+  renderGeoLevels();
+  applyPendingSettings();
+}
+
+function keywordMatch(items, query, hayFn) {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return [];
+  return items.filter((it) => { const h = hayFn(it); return terms.every((x) => h.includes(x)); });
+}
+
+const isPrGroup = (g) => /PR$/.test(String(g || ""));
+const prGroups = () => S.groupsList.filter((g) => isPrGroup(g.group));
+
+function renderPrTablesInfo() {
+  const box = $("prTablesInfo");
+  if (!S.prTables || !S.vars.length) { box.textContent = ""; return; }
+  const n = prGroups().length || new Set(S.vars.filter((v) => isPrGroup(v.group)).map((v) => v.group)).size;
+  box.textContent = n ? t("prTablesCount", { n: fmtNum(n), ds: S.dataset, yr: S.year }) : t("prTablesNone", { ds: S.dataset, yr: S.year });
+}
+
+function renderVarResults() {
+  renderPrTablesInfo();
+  const q = $("varSearch").value;
+  const pool = S.prTables ? S.vars.filter((v) => isPrGroup(v.group)) : S.vars;
+  const hits = keywordMatch(pool, q, (v) => v.hay);
+  const shown = hits.slice(0, 300);
+  $("varResultsInfo").textContent = q.trim() ? t(hits.length > 300 ? "matchesCapped" : "matches", { n: fmtNum(hits.length) }) : "";
+  $("varResultsWrap").hidden = !shown.length;
+  $("addChecked").hidden = !shown.length;
+  $("checkAllHits").checked = false;
+  $("varResults").innerHTML = shown.map((v) => `<tr>
+      <td><input type="checkbox" data-code="${esc(v.name)}" ${S.selected.has(v.name) ? `checked disabled title="${esc(t("alreadySelected"))}"` : ""}></td>
+      <td><code>${esc(v.name)}</code></td><td>${esc(v.label)}</td><td class="muted">${esc(v.concept)}</td></tr>`).join("");
+}
+
+function renderGroupResults() {
+  const q = $("groupSearch").value;
+  const pool = S.prTables ? prGroups() : S.groupsList;
+  const hits = (q.trim() || !S.prTables ? keywordMatch(pool, q, (g) => `${g.group} ${g.description}`.toLowerCase()) : pool).slice(0, 500);
+  $("groupInfo").textContent = q.trim() || (S.prTables && hits.length) ? t("tablesMatching", { n: hits.length }) : (S.groupsList.length || !S.vars.length ? "" : t("noTableList"));
+  const sel = $("groupSelect");
+  const prev = sel.value;
+  sel.hidden = !hits.length;
+  sel.innerHTML = hits.map((g) => `<option value="${esc(g.group)}">${esc(g.group)} — ${esc(g.description)}</option>`).join("");
+  if (hits.length) sel.value = hits.some((g) => g.group === prev) ? prev : hits[0].group;
+  renderGroupPreview();
+}
+
+function renderGroupPreview() {
+  const g = $("groupSelect").value;
+  const visible = !$("groupSelect").hidden && g;
+  $("groupPreviewWrap").hidden = !visible; $("addGroup").hidden = !visible;
+  if (!visible) return;
+  const vars = S.vars.filter((v) => v.group === g);
+  $("groupPreview").innerHTML = vars.map((v) => `<tr><td><code>${esc(v.name)}</code></td><td>${esc(v.label)}</td></tr>`).join("");
+  $("addGroup").textContent = t("addTable", { g, n: vars.length });
+}
+
+function renderSelection() {
+  $("selectionEmpty").hidden = S.selected.size > 0 || S.groups.size > 0;
+  $("selectionChips").innerHTML = [...S.selected].map(([c, l]) =>
+    `<span class="chip" title="${esc(l)}"><code>${esc(c)}</code> ${esc(l.length > 60 ? l.slice(0, 57) + "…" : l)}<button data-remove-var="${esc(c)}" title="${esc(t("remove"))}">×</button></span>`).join("");
+  $("groupsHeading").hidden = !S.groups.size;
+  $("groupChips").innerHTML = [...S.groups].map(([g, d]) =>
+    `<span class="chip"><code>${esc(g)}</code> ${esc(d)}<button data-remove-group="${esc(g)}" title="${esc(t("remove"))}">×</button></span>`).join("");
+  renderSelectionStat(); renderVarResults(); renderRunSummary();
+}
+
+/* ===================================================================
+   UI: geography tab
+   =================================================================== */
+const PR_POST_FILTER = new Set(["zip code tabulation area", "metropolitan statistical area/micropolitan statistical area", "combined statistical area", "urban area"]);
+const geoAllowed = (g) => !S.prOnly || g.name === "state" || g.requires.includes("state") || PR_POST_FILTER.has(g.name);
+
+function stateChecklist(id, set, allowAll) {
+  if (S.prOnly) return `<div class="checklist" id="${id}"><label><input type="checkbox" checked disabled> Puerto Rico <span class="muted">(72)</span></label><div class="hint">${esc(t("prStateLocked"))}</div></div>`;
+  const all = allowAll ? `<label><input type="checkbox" data-set="${id}" value="*" ${set.has("*") || !set.size ? "checked" : ""}> <b>${esc(t("allStates"))}</b></label>` : "";
+  // Puerto Rico first for convenience, then the rest alphabetically
+  const ordered = [...STATES.filter((s) => s[0] === "72"), ...STATES.filter((s) => s[0] !== "72")];
+  return `<div class="checklist" id="${id}">${all}${ordered.map(([f, n]) =>
+    `<label><input type="checkbox" data-set="${id}" value="${f}" ${set.has(f) ? "checked" : ""}> ${esc(n)} <span class="muted">(${f})</span></label>`).join("")}</div>`;
+}
+
+function renderGeoLevels() {
+  const sel = $("geoLevel");
+  sel.innerHTML = S.geos.map((g, i) => geoAllowed(g) ? `<option value="${i}">${esc(g.name)}${g.requires.length ? `  (${esc(t("within"))} ${esc(g.requires.join(" › "))})` : ""}</option>` : "").join("");
+  let idx = S.geoName ? S.geos.findIndex((g) => g.name === S.geoName && geoAllowed(g)) : -1;
+  if (idx < 0) idx = S.geos.findIndex((g) => g.name === "county" && geoAllowed(g));
+  if (idx < 0) idx = Math.max(0, S.geos.findIndex(geoAllowed));
+  sel.value = String(idx);
+  S.geoIndex = idx;
+  renderGeoInputs();
+}
+
+function renderGeoInputs() {
+  const g = S.geos[S.geoIndex] || { name: "state", requires: [], wildcard: [] };
+  S.geoName = g.name;
+  // keep the level list labels in the current language
+  [...$("geoLevel").options].forEach((o) => { const x = S.geos[Number(o.value)]; if (x) o.textContent = x.name + (x.requires.length ? `  (${t("within")} ${x.requires.join(" › ")})` : ""); });
+  if (g.name === "state") {
+    $("geoWhich").innerHTML = `<label>${esc(t("whichStates"))} <span class="hint">${esc(t("whichStatesHint"))}</span></label>${stateChecklist("geoStates", S.geoFilterStates, true)}`;
+  } else {
+    $("geoWhich").innerHTML = `<label for="geoFilter">${esc(t("whichGeo", { g: g.name }))} <span class="hint">${esc(t("whichGeoHint"))}</span></label>
+      <input id="geoFilter" type="text" value="${esc(S.geoFilterText || "*")}">` +
+      (S.prOnly && PR_POST_FILTER.has(g.name) ? msg("info", t("prPostNote")) : "");
+  }
+  let html = "";
+  if (g.requires.length) {
+    html += `<h3>${esc(t("insideParent"))}</h3>`;
+    for (const lvl of g.requires) {
+      const wc = g.wildcard.includes(lvl);
+      if (lvl === "state") {
+        html += `<label>${S.prOnly ? esc(t("stateLabel")) : t(wc ? "stateParentWc" : "stateParentReq")}</label>${stateChecklist("parentStates", S.parentStates, wc)}`;
+      } else {
+        const v = S.parentValues[lvl] ?? (wc ? "*" : "");
+        html += `<label>${esc(t("parentCode", { lvl }))} <span class="hint">${esc(t(wc ? "parentHintWc" : "parentHintReq"))}</span></label>
+          <input type="text" data-parent="${esc(lvl)}" value="${esc(v)}">`;
+      }
+    }
+  }
+  $("geoParents").innerHTML = html;
+  renderGeoQuery();
+}
+
+function currentGeo() {
+  const g = S.geos[S.geoIndex] || { name: "state", requires: [], wildcard: [] };
+  let filter;
+  if (g.name === "state") filter = S.prOnly ? "72" : S.geoFilterStates.size && !S.geoFilterStates.has("*") ? [...S.geoFilterStates].sort().join(",") : "*";
+  else filter = ($("geoFilter")?.value ?? S.geoFilterText ?? "*").trim() || "*";
+  const within = {};
+  for (const lvl of g.requires) {
+    if (lvl === "state") {
+      const wc = g.wildcard.includes("state");
+      within.state = S.prOnly ? "72" : S.parentStates.has("*") || (!S.parentStates.size && wc) ? "*" : [...S.parentStates].sort().join(",");
+    } else {
+      const inp = document.querySelector(`[data-parent="${CSS.escape(lvl)}"]`);
+      within[lvl] = (inp ? inp.value : S.parentValues[lvl] || "").trim();
+    }
+  }
+  return { geography: g.name, geo_filter: filter, within };
+}
+
+function renderGeoQuery() {
+  const { geography, geo_filter, within } = currentGeo();
+  const inStr = Object.entries(within).filter(([, v]) => v).map(([k, v]) => `${k}:${v}`).join(" ");
+  $("geoQuery").textContent = `for=${geography}:${geo_filter}${inStr ? `\nin=${inStr}` : ""}`;
+  renderRunSummary();
+}
+
+/* ===================================================================
+   UI: run tab
+   =================================================================== */
+function currentRequest() {
+  const geo = currentGeo();
+  return {
+    dataset: S.dataset,
+    years: [S.year, ...[...S.extraYears]].sort((a, b) => a - b),
+    variables: [...S.selected.keys()],
+    groups: [...S.groups.keys()],
+    geography: geo.geography, geo_filter: geo.geo_filter, within: geo.within,
+    include_moe: $("includeMoe").checked,
+    headers: document.querySelector('input[name="headers"]:checked').value,
+    filters: $("filters").value.split("\n").map((s) => s.trim()).filter(Boolean),
+    output: $("outName").value.trim() || "census_extract.csv",
+    write_dictionary: true,
+    pr_filter: S.prOnly && PR_POST_FILTER.has(geo.geography),
+  };
+}
+
+function blockers(req) {
+  const b = [];
+  if (!apiKey()) b.push(t("blockKey"));
+  if (!req.variables.length && !req.groups.length) b.push(t("blockSel"));
+  const empty = Object.entries(req.within).filter(([, v]) => !v).map(([k]) => k);
+  if (empty.length) b.push(t("blockParent", { list: empty.join(", ") }));
+  return b;
+}
+
+function renderRunSummary() {
+  if (!$("runSummary")) return;
+  const r = currentRequest();
+  const inStr = Object.entries(r.within).filter(([, v]) => v).map(([k, v]) => `${k}:${v}`).join(" ");
+  $("runSummary").innerHTML = `<p><b>${esc(t("sumDataset"))}:</b> <code>${esc(r.dataset)}</code> · <b>${esc(t("sumYears"))}:</b> ${esc(r.years.join(", "))}<br>
+    <b>${esc(t("sumVars"))}:</b> ${r.variables.length} · <b>${esc(t("sumTables"))}:</b> ${esc(r.groups.join(", ") || t("none"))}<br>
+    <b>${esc(t("sumGeo"))}:</b> ${esc(r.geography)} = <code>${esc(r.geo_filter)}</code>${inStr ? ` ${esc(t("within"))} <code>${esc(inStr)}</code>` : ""}
+    ${r.filters.length ? `<br><b>${esc(t("sumFilters"))}:</b> ${esc(r.filters.join(` ${t("and")} `))}` : ""}</p>`;
+  const b = blockers(r);
+  $("runBlockers").innerHTML = b.map((x) => msg("warn", x)).join("");
+  $("runBtn").disabled = b.length > 0 || S.running;
+}
+
+async function onRun() {
+  const req = currentRequest();
+  S.running = true; $("runBtn").disabled = true;
+  $("runStatus").innerHTML = `<span class="spinner"></span>${esc(t("downloading"))}`;
+  $("log").innerHTML = ""; $("runMsgs").innerHTML = ""; $("resultArea").hidden = true; S.result = null;
+  const log = (x) => { $("log").innerHTML += esc(x) + "<br>"; $("log").scrollTop = 1e9; };
+  try {
+    const res = await runExtract(req, log);
+    S.result = { ...res, request: req };
+    S.bounds = null; $("bOutputs").hidden = true; $("bInfo").innerHTML = ""; $("bStatus").innerHTML = "";
+    $("runMsgs").innerHTML = res.warnings.map((w) => msg("warn", w)).join("") +
+      msg("ok", t("complete", { r: fmtNum(res.rows.length), c: res.columns.length }));
+    renderPreview();
+    renderBoundaryPanel();
+    $("resultArea").hidden = false;
+  } catch (e) {
+    $("runMsgs").innerHTML = msg("err", e.message || String(e));
+    if (!(e instanceof CensusError)) console.error(e);
+  } finally {
+    S.running = false; $("runStatus").innerHTML = "";
+    renderRunSummary();
+  }
+}
+
+function renderPreview() {
+  const r = S.result;
+  const limit = 200;
+  const head = r.columns.map((c) => `<th>${esc(r.headerNames[c])}</th>`).join("");
+  const body = r.rows.slice(0, limit).map((row) => "<tr>" + r.columns.map((c) => {
+    const v = row[c];
+    return typeof v === "number" && c !== "year" ? `<td class="num">${fmtNum(v)}</td>` : `<td>${esc(v ?? "")}</td>`;
+  }).join("") + "</tr>").join("");
+  $("preview").innerHTML = `<thead><tr>${head}</tr></thead><tbody>${body}</tbody>`;
+  $("previewInfo").textContent = r.rows.length > limit ? t("previewInfo", { limit, total: fmtNum(r.rows.length) }) : "";
+}
+
+/* ===================================================================
+   Settings save / load (JSON; also readable by the desktop/CLI version)
+   =================================================================== */
+function settingsJson(req) {
+  const o = { dataset: req.dataset };
+  if (req.years.length === 1) o.year = req.years[0]; else o.years = req.years;
+  o.variables = req.variables;
+  if (req.groups.length) o.groups = req.groups;
+  Object.assign(o, { geography: req.geography, geo_filter: req.geo_filter });
+  if (Object.keys(req.within).length) o.within = req.within;
+  Object.assign(o, { include_moe: req.include_moe, headers: req.headers });
+  if (req.filters.length) o.filters = req.filters;
+  Object.assign(o, { output: req.output, write_dictionary: true });
+  return JSON.stringify(o, null, 2);
+}
+
+async function loadSettingsFile(file) {
+  let cfg;
+  try { cfg = JSON.parse(await file.text()); }
+  catch { flash("err", t("badJson")); return; }
+  S.prOffNote = false;
+  applySettings(cfg);
+  flash("ok", t("loadedSettings", { name: file.name }) + (S.prOffNote ? "\n" + t("prOffLoaded") : ""));
+}
+
+function applySettings(cfg) {
+  const ds = String(cfg.dataset || "acs/acs5").replace(/^\/+|\/+$/g, "");
+  const latest = yearsFor(ds)[0] ?? null;
+  const rawYears = Array.isArray(cfg.years) ? cfg.years : cfg.year != null ? [cfg.year] : [];
+  const years = [...new Set(rawYears.map((y) => (y === "latest" ? latest : Number(y))).filter((y) => y))];
+  S.selected = new Map(); S.groups = new Map();
+  for (const v of cfg.variables || []) {
+    const m = String(v).match(/^group\((\w+)\)$/i);
+    if (m) S.groups.set(m[1].toUpperCase(), ""); else S.selected.set(String(v), "");
+  }
+  for (const g of cfg.groups || []) S.groups.set(String(g).toUpperCase(), "");
+  if (![...$("dataset").options].some((o) => o.value === ds) && S.catalogue.some((d) => d.dataset === ds)) { $("showAll").checked = true; }
+  S.dataset = ds;
+  renderDatasetOptions();
+  if ([...$("dataset").options].some((o) => o.value === ds)) { $("dataset").value = ds; $("customDataset").value = ""; }
+  else $("customDataset").value = ds;
+  S.year = years.length ? Math.max(...years) : latest;
+  S.extraYears = new Set(years.filter((y) => y !== S.year));
+  $("includeMoe").checked = "include_moe" in cfg ? Boolean(cfg.include_moe) : true;
+  const r = document.querySelector(`input[name="headers"][value="${cfg.headers || "code"}"]`); if (r) r.checked = true;
+  $("filters").value = (Array.isArray(cfg.filters) ? cfg.filters : cfg.filters ? [cfg.filters] : []).join("\n");
+  $("outName").value = cfg.output || "census_extract.csv";
+  S.pendingSettings = { geography: cfg.geography || "state", geo_filter: String(cfg.geo_filter ?? "*"), within: cfg.within || {} };
+  const wState = cfg.within && cfg.within.state != null ? resolveStateSafe(String(cfg.within.state)) : null;
+  const sFilter = (cfg.geography || "state") === "state" ? resolveStateSafe(String(cfg.geo_filter ?? "*")) : null;
+  if (S.prOnly && ((wState != null && wState !== "72") || (sFilter != null && sFilter !== "72"))) { setPrOnly(false); S.prOffNote = true; }
+  S.result = null; $("resultArea").hidden = true; $("runMsgs").innerHTML = ""; $("log").innerHTML = "";
+  renderYears();
+  renderSelection();
+  refreshMetadata();
+}
+
+function applyPendingSettings() {
+  const p = S.pendingSettings;
+  if (!p) return;
+  S.pendingSettings = null;
+  for (const c of S.selected.keys()) { const v = S.vars.find((x) => x.name === c); S.selected.set(c, v ? v.label : t("notInThisYear")); }
+  for (const g of S.groups.keys()) { const x = S.groupsList.find((y) => y.group === g); S.groups.set(g, x ? x.description : ""); }
+  S.geoName = p.geography;
+  S.geoFilterStates = new Set(); S.geoFilterText = "*";
+  if (p.geography === "state") S.geoFilterStates = new Set(p.geo_filter === "*" ? ["*"] : resolveStateSafe(p.geo_filter).split(",").filter(Boolean));
+  else S.geoFilterText = p.geo_filter;
+  S.parentStates = new Set(); S.parentValues = {};
+  for (const [k, v] of Object.entries(p.within)) {
+    if (k === "state") S.parentStates = new Set(String(v) === "*" ? ["*"] : resolveStateSafe(String(v)).split(",").filter(Boolean));
+    else S.parentValues[k] = String(v);
+  }
+  renderGeoLevels(); renderSelection();
+}
+function resolveStateSafe(v) { try { return resolveState(v); } catch { return ""; } }
+
+/* ===================================================================
+   Help dialog
+   =================================================================== */
+function renderHelp() { $("helpBody").innerHTML = helpHtml(); }
+function openHelp() { renderHelp(); $("help").showModal(); $("helpBody").scrollTop = 0; }
+
+/* ===================================================================
+   Wiring
+   =================================================================== */
+function onYearOrDatasetChange() {
+  S.result = null; $("resultArea").hidden = true; $("runMsgs").innerHTML = ""; $("log").innerHTML = "";
+  refreshMetadata();
+  renderRunSummary();
+}
+
+function debounce(fn, ms) { let tm; return (...a) => { clearTimeout(tm); tm = setTimeout(() => fn(...a), ms); }; }
+
+function showTab(name) {
+  document.querySelectorAll("#tabs button").forEach((x) => x.classList.toggle("active", x.dataset.tab === name));
+  document.querySelectorAll(".tab").forEach((tb) => tb.classList.toggle("active", tb.id === "tab-" + name));
+  if (name === "run") renderRunSummary();
+}
+
+function setPrOnly(v) {
+  S.prOnly = Boolean(v); $("prOnly").checked = S.prOnly; storageSet("censusPrOnly", S.prOnly ? "1" : "0");
+  if (S.geos.length) renderGeoLevels();
+  renderRunSummary();
+}
+function setPrTables(v) {
+  S.prTables = Boolean(v); $("prTables").checked = S.prTables; storageSet("censusPrTables", S.prTables ? "1" : "0");
+  renderVarResults(); renderGroupResults();
+}
+
+function wire() {
+  $("prOnly").addEventListener("change", (e) => setPrOnly(e.target.checked));
+  $("prTables").addEventListener("change", (e) => setPrTables(e.target.checked));
+  $("tabs").addEventListener("click", (e) => { const b = e.target.closest("button[data-tab]"); if (b) showTab(b.dataset.tab); });
+  // language + help
+  $("langBtn").addEventListener("click", () => setLang(LANG === "es" ? "en" : "es"));
+  document.querySelectorAll(".js-lang").forEach((b) => b.addEventListener("click", () => setLang(LANG === "es" ? "en" : "es")));
+  $("helpBtn").addEventListener("click", openHelp);
+  $("helpClose").addEventListener("click", () => $("help").close());
+  $("help").addEventListener("click", (e) => {
+    if (e.target === $("help")) { $("help").close(); return; }           // click on backdrop
+    const a = e.target.closest(".help-nav a");
+    if (a) { e.preventDefault(); $("helpBody").querySelector(a.getAttribute("href"))?.scrollIntoView({ behavior: "smooth" }); return; }
+    const b = e.target.closest("[data-example]");
+    if (b) {
+      const ex = PR_EXAMPLES[Number(b.dataset.example)];
+      applySettings(ex.cfg);
+      $("help").close();
+      showTab("run");
+      flash("ok", t("exampleLoaded", { name: (ex[LANG] || ex.en)[0] }));
+    }
+  });
+  // key
+  const saved = storageGet("censusApiKey");
+  if (saved) { $("apiKey").value = saved; $("rememberKey").checked = true; }
+  $("apiKey").addEventListener("input", () => { if ($("rememberKey").checked) storageSet("censusApiKey", apiKey() || null); renderRunSummary(); });
+  $("rememberKey").addEventListener("change", () => storageSet("censusApiKey", $("rememberKey").checked && apiKey() ? apiKey() : null));
+  $("toggleKey").addEventListener("click", () => {
+    const i = $("apiKey"); i.type = i.type === "password" ? "text" : "password"; $("toggleKey").textContent = i.type === "password" ? t("show") : t("hide");
+  });
+  // dataset / year
+  $("showAll").addEventListener("change", renderDatasetOptions);
+  $("dataset").addEventListener("change", () => { $("customDataset").value = ""; S.year = null; renderYears(); onYearOrDatasetChange(); });
+  $("customDataset").addEventListener("change", () => { S.year = null; renderYears(); onYearOrDatasetChange(); });
+  $("year").addEventListener("change", () => { S.year = Number($("year").value); renderYears(); onYearOrDatasetChange(); });
+  $("extraYears").addEventListener("change", (e) => {
+    const y = Number(e.target.value); if (e.target.checked) S.extraYears.add(y); else S.extraYears.delete(y); renderRunSummary();
+  });
+  $("clearAll").addEventListener("click", () => { S.selected.clear(); S.groups.clear(); renderSelection(); });
+  $("loadSettingsBtn").addEventListener("click", () => $("loadSettingsFile").click());
+  $("loadSettingsFile").addEventListener("change", (e) => { const f = e.target.files[0]; if (f) loadSettingsFile(f); e.target.value = ""; });
+  // variables
+  $("varSearch").addEventListener("input", debounce(renderVarResults, 200));
+  $("checkAllHits").addEventListener("change", (e) => {
+    document.querySelectorAll("#varResults input[type=checkbox]:not(:disabled)").forEach((c) => { c.checked = e.target.checked; });
+  });
+  $("varResults").addEventListener("click", (e) => {
+    if (e.target.tagName === "INPUT") return;
+    const cb = e.target.closest("tr")?.querySelector("input[type=checkbox]");
+    if (cb && !cb.disabled) cb.checked = !cb.checked;
+  });
+  $("addChecked").addEventListener("click", () => {
+    document.querySelectorAll("#varResults input[type=checkbox]:checked:not(:disabled)").forEach((c) => {
+      const v = S.vars.find((x) => x.name === c.dataset.code); if (v) S.selected.set(v.name, v.label);
+    });
+    renderSelection();
+  });
+  $("addPasted").addEventListener("click", () => {
+    const codes = $("pasteCodes").value.split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
+    const known = new Map(S.vars.map((v) => [v.name, v.label]));
+    const bad = [];
+    for (const c of codes) { const k = known.has(c) ? c : known.has(c.toUpperCase()) ? c.toUpperCase() : null; if (k) S.selected.set(k, known.get(k)); else bad.push(c); }
+    $("pasteMsg").innerHTML = bad.length ? msg("warn", t("notFoundPaste", { ds: S.dataset, yr: S.year, codes: bad.join(", ") })) : (codes.length ? msg("ok", t("addedCodes", { n: codes.length })) : "");
+    if (!bad.length) $("pasteCodes").value = "";
+    renderSelection();
+  });
+  $("groupSearch").addEventListener("input", debounce(renderGroupResults, 200));
+  $("groupSelect").addEventListener("change", renderGroupPreview);
+  $("addGroup").addEventListener("click", () => {
+    const g = $("groupSelect").value; const d = S.groupsList.find((x) => x.group === g);
+    if (g) { S.groups.set(g, d ? d.description : ""); renderSelection(); }
+  });
+  document.body.addEventListener("click", (e) => {
+    const rv = e.target.closest("[data-remove-var]"); if (rv) { S.selected.delete(rv.dataset.removeVar); renderSelection(); }
+    const rg = e.target.closest("[data-remove-group]"); if (rg) { S.groups.delete(rg.dataset.removeGroup); renderSelection(); }
+  });
+  // geography
+  $("geoLevel").addEventListener("change", () => { S.geoIndex = Number($("geoLevel").value); S.geoName = null; renderGeoInputs(); });
+  $("tab-geo").addEventListener("change", (e) => {
+    const x = e.target;
+    if (x.dataset.set) {
+      const set = x.dataset.set === "geoStates" ? S.geoFilterStates : S.parentStates;
+      if (x.value === "*") { set.clear(); if (x.checked) set.add("*"); }
+      else { set.delete("*"); set[x.checked ? "add" : "delete"](x.value); }
+      const allBox = document.querySelector(`#${x.dataset.set} input[value="*"]`);
+      if (allBox) allBox.checked = set.has("*") || !set.size;
+      if (x.value === "*" && x.checked) document.querySelectorAll(`#${x.dataset.set} input:not([value="*"])`).forEach((c) => { c.checked = false; });
+    }
+    renderGeoQuery();
+  });
+  $("tab-geo").addEventListener("input", (e) => {
+    if (e.target.dataset.parent) S.parentValues[e.target.dataset.parent] = e.target.value;
+    if (e.target.id === "geoFilter") S.geoFilterText = e.target.value;
+    renderGeoQuery();
+  });
+  // options
+  ["includeMoe", "filters", "outName"].forEach((id) => $(id).addEventListener("input", renderRunSummary));
+  document.querySelectorAll('input[name="headers"]').forEach((r) => r.addEventListener("change", renderRunSummary));
+  // run + downloads
+  $("runBtn").addEventListener("click", onRun);
+  wireBoundaries();
+  $("dlCsv").addEventListener("click", () => {
+    const r = S.result;
+    download(outBase() + ".csv", toCsv(r.columns.map((c) => r.headerNames[c]), r.rows.map((row) => r.columns.map((c) => row[c]))), "text/csv");
+  });
+  $("dlDict").addEventListener("click", () => {
+    const r = S.result;
+    download(outBase() + "_dictionary.csv", toCsv(["code", "label", "concept", "table"], r.dictionary.map((d) => [d.code, d.label, d.concept, d.table])), "text/csv");
+  });
+  $("dlSettings").addEventListener("click", () => download(outBase() + "_settings.json", settingsJson(S.result?.request || currentRequest()), "application/json"));
+}
+
+/* ===================================================================
+   Boundaries: TIGERweb lookup, GeoJSON, shapefile, preview map
+   =================================================================== */
+const TIGER = "https://tigerweb.geo.census.gov/arcgis/rest/services";
+// Census API geography level -> TIGERweb layer base names (regex fragments)
+const GEO_LAYERS = {
+  "us": ["United States", "Nation"],
+  "region": ["Census Regions"],
+  "division": ["Census Divisions"],
+  "state": ["States"],
+  "county": ["Counties"],
+  "county subdivision": ["County Subdivisions"],
+  "subminor civil division": ["Subbarrios"],
+  "tract": ["Census Tracts"],
+  "block group": ["Census Block Groups"],
+  "place": ["Incorporated Places", "Census Designated Places"],
+  "consolidated city": ["Consolidated Cities"],
+  "zip code tabulation area": ["(?:\\d{4} Census )?ZIP Code Tabulation Areas"],
+  "congressional district": ["\\d+(?:st|nd|rd|th) Congressional Districts"],
+  "state legislative district (upper chamber)": ["(?:\\d{4} )?State Legislative Districts - Upper"],
+  "state legislative district (lower chamber)": ["(?:\\d{4} )?State Legislative Districts - Lower"],
+  "metropolitan statistical area/micropolitan statistical area": ["Metropolitan Statistical Areas", "Micropolitan Statistical Areas"],
+  "combined statistical area": ["Combined Statistical Areas"],
+  "metropolitan division": ["Metropolitan Divisions"],
+  "public use microdata area": ["(?:\\d{4} Census )?Public Use Microdata Areas"],
+  "urban area": ["(?:\\d{4} Census )?Urban Areas"],
+  "school district (unified)": ["Unified School Districts"],
+  "school district (elementary)": ["Elementary School Districts"],
+  "school district (secondary)": ["Secondary School Districts"],
+};
+const tigerCache = new Map();
+
+class TigerError extends Error {}
+
+async function tigerGet(path, params = {}, body = null) {
+  const url = `${TIGER}/${path}`;
+  let resp;
+  try {
+    resp = body
+      ? await fetch(url, { method: "POST", body: new URLSearchParams({ ...params, ...body }) })
+      : await fetch(`${url}?${new URLSearchParams({ f: "json", ...params })}`);
+  } catch (e) { throw new TigerError(t("bUnreachable")); }
+  const text = await resp.text();
+  if (resp.status === 404) { const e = new TigerError(t("bTigerErr", { m: `HTTP 404 ${path}` })); e.notFound = true; throw e; }
+  if (!resp.ok) throw new TigerError(t("bTigerErr", { m: `HTTP ${resp.status} ${htmlToText(text, 200)}` }));
+  let json;
+  try { json = JSON.parse(text); } catch { throw new TigerError(t("bTigerErr", { m: htmlToText(text, 200) })); }
+  if (json && json.error) {
+    const e = new TigerError(t("bTigerErr", { m: `${json.error.message || ""} ${(json.error.details || []).join(" ")}`.trim() }));
+    if (json.error.code === 404 || json.error.code === 400 && /not found|does not exist/i.test(json.error.message || "")) e.notFound = true;
+    throw e;
+  }
+  return json;
+}
+async function tigerCached(path) {
+  if (!tigerCache.has(path)) tigerCache.set(path, tigerGet(path).catch((e) => { tigerCache.delete(path); throw e; }));
+  return tigerCache.get(path);
+}
+async function serviceLayers(svc) {
+  const j = await tigerCached(`${svc}/MapServer`);
+  return (j.layers || []).filter((l) => !(l.subLayerIds && l.subLayerIds.length) && !/labels?$/i.test(l.name));
+}
+async function folderServices(folder) {
+  const j = await tigerCached(folder);
+  return (j.services || []).filter((s) => s.type === "MapServer").map((s) => s.name);
+}
+
+function boundarySources(dataset, year) {
+  const y = Number(year), out = [];
+  if (y === 2020) out.push({ detail: "TIGERweb/tigerWMS_Census2020", gen: "Generalized_TAB2020", label: "2020 Census" });
+  else if (/^dec\//.test(dataset) && y === 2010) out.push({ detail: "TIGERweb/tigerWMS_Census2010", gen: null, label: "2010 Census" });
+  else out.push({ detail: `TIGERweb/tigerWMS_ACS${y}`, gen: `Generalized_ACS${y}`, label: `ACS ${y}` });
+  out.push({ detail: "TIGERweb/tigerWMS_Current", gen: null, label: t("bCurrent"), fallback: true });
+  return out;
+}
+
+/* Returns [{svc, id, name}] - one layer per base pattern that exists. */
+async function findLayers(level, simplified, src, notes) {
+  const bases = GEO_LAYERS[level];
+  const found = [];
+  if (simplified && src.gen) {
+    let services = [];
+    try { services = await folderServices(src.gen); } catch (e) { if (!e.notFound) throw e; }
+    for (const base of bases) {
+      let hit = null;
+      for (const svc of services) {
+        const layers = await serviceLayers(svc);
+        const rx500 = new RegExp(`^(?:${base}) 500K$`, "i"), rx = new RegExp(`^(?:${base})$`, "i");
+        const l = layers.find((x) => rx500.test(x.name)) || layers.find((x) => rx.test(x.name));
+        if (l) { hit = { svc, id: l.id, name: l.name }; break; }
+      }
+      if (hit) found.push(hit);
+    }
+    if (found.length) return found;
+    notes.push(["bFallbackGen", { lvl: level }]);
+  }
+  const layers = await serviceLayers(src.detail);
+  for (const base of bases) {
+    const rx = new RegExp(`^(?:${base})$`, "i");
+    const l = layers.find((x) => rx.test(x.name));
+    if (l) found.push({ svc: src.detail, id: l.id, name: l.name });
+  }
+  return found;
+}
+
+async function queryLayer(layer, geoids, progress) {
+  const feats = [];
+  const size = 150;
+  for (let i = 0; i < geoids.length; i += size) {
+    const batch = geoids.slice(i, i + size);
+    progress(Math.min(i + size, geoids.length));
+    const j = await tigerGet(`${layer.svc}/MapServer/${layer.id}/query`, {}, {
+      where: `GEOID IN (${batch.map((g) => `'${g}'`).join(",")})`,
+      outFields: "GEOID", returnGeometry: "true", outSR: "4326", geometryPrecision: "6", f: "geojson",
+    });
+    for (const f of j.features || []) if (f.geometry) feats.push(f);
+  }
+  return feats;
+}
+
+async function fetchBoundaries(result, simplified, status) {
+  const req = result.request;
+  const level = req.geography;
+  if (!GEO_LAYERS[level]) throw new TigerError(t("bUnsupported", { lvl: level }));
+  if (!result.columns.includes("GEOID")) throw new TigerError(t("bNoGeoid"));
+  const notes = [];
+  // stacked years: join the newest year's values
+  let rows = result.rows;
+  const year = Math.max(...req.years);
+  if (req.years.length > 1) { rows = rows.filter((r) => r.year === year); notes.push(["bMultiYear", { yr: year }]); }
+  const byId = new Map(rows.map((r) => [String(r.GEOID), r]));
+  const geoids = [...byId.keys()].filter((g) => /^[0-9A-Za-z]+$/.test(g));
+  if (!geoids.length) throw new TigerError(t("bNoGeoid"));
+
+  let feats = null, used = null;
+  for (const src of boundarySources(req.dataset, year)) {
+    try {
+      status(t("bFindingLayer", { lvl: level, src: src.fallback ? t("bCurrent") : src.label }));
+      const srcNotes = [];
+      const layers = await findLayers(level, simplified, src, srcNotes);
+      if (!layers.length) { if (src.fallback) throw new TigerError(t("bUnsupported", { lvl: level })); continue; }
+      const got = new Map();
+      for (const layer of layers) {
+        const left = geoids.filter((g) => !got.has(g));
+        if (!left.length) break;
+        const fs = await queryLayer(layer, left, (a) => status(t("bFetching", { a: fmtNum(a), b: fmtNum(left.length), layer: layer.name })));
+        for (const f of fs) { const g = String(f.properties?.GEOID ?? ""); if (byId.has(g) && !got.has(g)) got.set(g, f); }
+      }
+      notes.push(...srcNotes);
+      if (src.fallback) notes.push(["bFallbackYear", { yr: year }]);
+      feats = got; used = { src, layers };
+      break;
+    } catch (e) {
+      if (e.notFound && !src.fallback) continue;   // vintage service missing -> try current
+      throw e;
+    }
+  }
+  if (!feats) throw new TigerError(t("bUnsupported", { lvl: level }));
+
+  const varCols = result.columns.filter((c) => !["GEOID", "NAME", "year"].includes(c) && result.dictionary.some((d) => d.code === c));
+  const idCols = result.columns.filter((c) => !varCols.includes(c) && c !== "year");
+  const features = [];
+  for (const g of geoids) {
+    const f = feats.get(g);
+    if (!f) continue;
+    const r = byId.get(g), props = {};
+    for (const c of idCols) props[c] = r[c] ?? null;
+    if (req.years.length > 1) props.year = year;
+    for (const c of varCols) props[c] = r[c] ?? null;
+    features.push({ type: "Feature", properties: props, geometry: f.geometry });
+  }
+  const missing = geoids.filter((g) => !feats.has(g));
+  if (missing.length) notes.push(["bMissing", { n: fmtNum(missing.length), list: missing.slice(0, 8).join(", ") + (missing.length > 8 ? "…" : "") }]);
+  return {
+    fc: { type: "FeatureCollection", features },
+    varCols, idCols: req.years.length > 1 ? [...idCols, "year"] : idCols,
+    notes, src: used.src, layerNames: used.layers.map((l) => l.name).join(" + "),
+  };
+}
+
+/* ---------- Shapefile writer (polygons, WGS84) ---------- */
+function signedArea(ring) { let a = 0; for (let i = 0; i < ring.length - 1; i++) a += (ring[i + 1][0] - ring[i][0]) * (ring[i + 1][1] + ring[i][1]); return a; } // > 0 = clockwise
+function closeRing(r) { const a = r[0], b = r[r.length - 1]; return a[0] === b[0] && a[1] === b[1] ? r : [...r, a]; }
+function shpParts(geom) {
+  if (!geom) return [];
+  const polys = geom.type === "Polygon" ? [geom.coordinates] : geom.type === "MultiPolygon" ? geom.coordinates : [];
+  const parts = [];
+  for (const poly of polys) poly.forEach((ring, k) => {
+    if (!ring || ring.length < 3) return;
+    let r = closeRing(ring);
+    const cw = signedArea(r) > 0;
+    if ((k === 0) !== cw) r = [...r].reverse();   // outer ring clockwise, holes counter-clockwise
+    parts.push(r);
+  });
+  return parts;
+}
+
+function dbfFieldNames(cols) {
+  const used = new Set(), out = {};
+  for (const c of cols) {
+    let n = c.replace(/[^A-Za-z0-9_]/g, "");
+    if (n.length > 10) n = n.replace(/_/g, "");
+    n = n.slice(0, 10).toUpperCase() || "FIELD";
+    let k = 1, base = n;
+    while (used.has(n)) { const s = String(k++); n = base.slice(0, 10 - s.length - 1) + "_" + s; }
+    used.add(n); out[c] = n;
+  }
+  return out;
+}
+
+const enc = new TextEncoder();
+function fitUtf8(str, maxBytes) {
+  let s = String(str ?? ""), b = enc.encode(s);
+  while (b.length > maxBytes) { s = s.slice(0, -1); b = enc.encode(s); }
+  return b;
+}
+
+function buildShapefile(bounds, base) {
+  const feats = bounds.fc.features;
+  const recs = feats.map((f) => shpParts(f.geometry));
+  // --- .shp / .shx
+  let gx0 = Infinity, gy0 = Infinity, gx1 = -Infinity, gy1 = -Infinity;
+  const contentLens = recs.map((parts) => {
+    const n = parts.reduce((s, p) => s + p.length, 0);
+    return parts.length ? 44 + 4 * parts.length + 16 * n : 4;
+  });
+  const shpLen = 100 + contentLens.reduce((s, c) => s + 8 + c, 0);
+  const shp = new DataView(new ArrayBuffer(shpLen));
+  const shx = new DataView(new ArrayBuffer(100 + 8 * recs.length));
+  let off = 100;
+  recs.forEach((parts, i) => {
+    shx.setInt32(100 + 8 * i, off / 2, false); shx.setInt32(104 + 8 * i, contentLens[i] / 2, false);
+    shp.setInt32(off, i + 1, false); shp.setInt32(off + 4, contentLens[i] / 2, false);
+    let p = off + 8;
+    if (!parts.length) { shp.setInt32(p, 0, true); off += 8 + contentLens[i]; return; }
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const r of parts) for (const [x, y] of r) { if (x < x0) x0 = x; if (y < y0) y0 = y; if (x > x1) x1 = x; if (y > y1) y1 = y; }
+    gx0 = Math.min(gx0, x0); gy0 = Math.min(gy0, y0); gx1 = Math.max(gx1, x1); gy1 = Math.max(gy1, y1);
+    const nPts = parts.reduce((s, r) => s + r.length, 0);
+    shp.setInt32(p, 5, true); p += 4;
+    [x0, y0, x1, y1].forEach((v) => { shp.setFloat64(p, v, true); p += 8; });
+    shp.setInt32(p, parts.length, true); p += 4;
+    shp.setInt32(p, nPts, true); p += 4;
+    let start = 0;
+    for (const r of parts) { shp.setInt32(p, start, true); p += 4; start += r.length; }
+    for (const r of parts) for (const [x, y] of r) { shp.setFloat64(p, x, true); shp.setFloat64(p + 8, y, true); p += 16; }
+    off += 8 + contentLens[i];
+  });
+  if (!isFinite(gx0)) gx0 = gy0 = gx1 = gy1 = 0;
+  for (const [dv, len] of [[shp, shpLen], [shx, 100 + 8 * recs.length]]) {
+    dv.setInt32(0, 9994, false); dv.setInt32(24, len / 2, false);
+    dv.setInt32(28, 1000, true); dv.setInt32(32, 5, true);
+    [gx0, gy0, gx1, gy1].forEach((v, k) => dv.setFloat64(36 + 8 * k, v, true));
+  }
+  // --- .dbf
+  const cols = [...bounds.idCols, ...bounds.varCols];
+  const names = dbfFieldNames(cols);
+  const fields = cols.map((c) => {
+    const vals = feats.map((f) => f.properties[c]);
+    const nums = vals.filter((v) => v != null && v !== "");
+    const numeric = bounds.varCols.includes(c) && nums.every((v) => typeof v === "number");
+    if (numeric) {
+      const ints = nums.every((v) => Number.isInteger(v));
+      return { c, name: names[c], type: "N", len: ints ? 18 : 20, dec: ints ? 0 : 6 };
+    }
+    const maxB = Math.min(254, Math.max(1, ...vals.map((v) => enc.encode(String(v ?? "")).length)));
+    return { c, name: names[c], type: "C", len: maxB, dec: 0 };
+  });
+  const recLen = 1 + fields.reduce((s, f) => s + f.len, 0);
+  const hdrLen = 32 + 32 * fields.length + 1;
+  const dbf = new Uint8Array(hdrLen + recLen * feats.length + 1);
+  const dv = new DataView(dbf.buffer);
+  const now = new Date();
+  dbf[0] = 0x03; dbf[1] = now.getFullYear() - 1900; dbf[2] = now.getMonth() + 1; dbf[3] = now.getDate();
+  dv.setUint32(4, feats.length, true); dv.setUint16(8, hdrLen, true); dv.setUint16(10, recLen, true);
+  fields.forEach((f, i) => {
+    const o = 32 + 32 * i;
+    dbf.set(enc.encode(f.name), o);
+    dbf[o + 11] = f.type.charCodeAt(0); dbf[o + 16] = f.len; dbf[o + 17] = f.dec;
+  });
+  dbf[hdrLen - 1] = 0x0d;
+  feats.forEach((feat, r) => {
+    let o = hdrLen + r * recLen;
+    dbf[o++] = 0x20;
+    for (const f of fields) {
+      const v = feat.properties[f.c];
+      let bytes;
+      if (f.type === "N") {
+        const s = v == null || v === "" ? "" : f.dec ? Number(v).toFixed(f.dec) : String(Math.round(v));
+        bytes = enc.encode(s.length > f.len ? "".padStart(f.len, "*") : s.padStart(f.len, " "));
+      } else {
+        const b = fitUtf8(v, f.len); bytes = new Uint8Array(f.len).fill(0x20); bytes.set(b, 0);
+      }
+      dbf.set(bytes, o); o += f.len;
+    }
+  });
+  dbf[dbf.length - 1] = 0x1a;
+  // --- sidecars
+  const prj = 'GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]]';
+  const dict = new Map((S.result?.dictionary || []).map((d) => [d.code, d]));
+  const fieldsCsv = toCsv(["field", "code", "label", "concept"], fields.map((f) => [f.name, f.c, dict.get(f.c)?.label ?? "", dict.get(f.c)?.concept ?? ""]));
+  return makeZip([
+    { name: `${base}.shp`, data: new Uint8Array(shp.buffer) },
+    { name: `${base}.shx`, data: new Uint8Array(shx.buffer) },
+    { name: `${base}.dbf`, data: dbf },
+    { name: `${base}.prj`, data: enc.encode(prj) },
+    { name: `${base}.cpg`, data: enc.encode("UTF-8") },
+    { name: `${base}_fields.csv`, data: enc.encode(fieldsCsv) },
+  ]);
+}
+
+/* ---------- Minimal ZIP writer (stored, no compression) ---------- */
+const CRC_TABLE = (() => { const tb = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; tb[n] = c >>> 0; } return tb; })();
+function crc32(u8) { let c = 0xffffffff; for (let i = 0; i < u8.length; i++) c = CRC_TABLE[(c ^ u8[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
+function makeZip(files) {
+  const d = new Date();
+  const time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+  const date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+  const locals = [], centrals = [];
+  let offset = 0;
+  for (const f of files) {
+    const name = enc.encode(f.name), crc = crc32(f.data), size = f.data.length;
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(8, 0, true);
+    lh.setUint16(10, time, true); lh.setUint16(12, date, true); lh.setUint32(14, crc, true);
+    lh.setUint32(18, size, true); lh.setUint32(22, size, true); lh.setUint16(26, name.length, true); lh.setUint16(28, 0, true);
+    locals.push(new Uint8Array(lh.buffer), name, f.data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+    ch.setUint16(10, 0, true); ch.setUint16(12, time, true); ch.setUint16(14, date, true); ch.setUint32(16, crc, true);
+    ch.setUint32(20, size, true); ch.setUint32(24, size, true); ch.setUint16(28, name.length, true);
+    ch.setUint32(42, offset, true);
+    centrals.push(new Uint8Array(ch.buffer), name);
+    offset += 30 + name.length + size;
+  }
+  const cdSize = centrals.reduce((s, a) => s + a.length, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+  end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+  return new Blob([...locals, ...centrals, new Uint8Array(end.buffer)], { type: "application/zip" });
+}
+function downloadBlob(filename, blob) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+/* ---------- Preview map (SVG choropleth, quintiles) ---------- */
+function mapVariables(bounds) {
+  const props = bounds.fc.features.map((f) => f.properties);
+  const numeric = bounds.varCols.filter((c) => props.some((p) => typeof p[c] === "number"));
+  // estimates first; margins of error last
+  return [...numeric.filter((c) => !/M$/.test(c) || !numeric.includes(c.slice(0, -1) + "E")),
+          ...numeric.filter((c) => /M$/.test(c) && numeric.includes(c.slice(0, -1) + "E"))];
+}
+
+function quantileBreaks(values, k) {
+  const v = [...values].sort((a, b) => a - b);
+  const br = [];
+  for (let i = 1; i < k; i++) br.push(v[Math.min(v.length - 1, Math.floor((i * v.length) / k))]);
+  return [...new Set(br)];
+}
+
+function renderMap() {
+  const box = $("mapBox"), b = S.bounds;
+  if (!b || !b.fc.features.length) { box.innerHTML = ""; $("mapLegend").innerHTML = ""; return; }
+  const code = $("mapVar").value;
+  const W = 960;
+  const feats = b.fc.features;
+  // projection: equirectangular scaled by cos(mid-latitude); wrap far-west Aleutians
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  const each = (g, fn) => { const polys = g.type === "Polygon" ? [g.coordinates] : g.type === "MultiPolygon" ? g.coordinates : []; for (const p of polys) for (const r of p) fn(r); };
+  for (const f of feats) each(f.geometry, (r) => { for (const [x, y] of r) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; } });
+  const wrap = x0 < -100 && x1 > 100;
+  const lon = (x) => (wrap && x > 0 ? x - 360 : x);
+  if (wrap) { x0 = Infinity; x1 = -Infinity; for (const f of feats) each(f.geometry, (r) => { for (const [x] of r) { const v = lon(x); if (v < x0) x0 = v; if (v > x1) x1 = v; } }); }
+  const kx = Math.cos(((y0 + y1) / 2) * Math.PI / 180);
+  const spanX = Math.max(1e-9, (x1 - x0) * kx), spanY = Math.max(1e-9, y1 - y0);
+  const pad = 10, H = Math.max(220, Math.min(640, Math.round((W - 2 * pad) * spanY / spanX + 2 * pad)));
+  const s = Math.min((W - 2 * pad) / spanX, (H - 2 * pad) / spanY);
+  const ox = (W - spanX * s) / 2, oy = (H - spanY * s) / 2;
+  const P = (x, y) => [ox + (lon(x) - x0) * kx * s, oy + (y1 - y) * s];
+  // classes
+  const vals = feats.map((f) => f.properties[code]).filter((v) => typeof v === "number");
+  const breaks = quantileBreaks(vals, Math.min(5, new Set(vals).size));
+  const cls = (v) => { if (typeof v !== "number") return "nd"; let i = 0; while (i < breaks.length && v >= breaks[i]) i++; return "c" + (i + 1 + (5 - (breaks.length + 1))); };
+  const paths = feats.map((f, i) => {
+    let d = "";
+    each(f.geometry, (r) => {
+      let lx = null, ly = null, seg = "";
+      r.forEach(([x, y], k) => {
+        const [px, py] = P(x, y);
+        if (k && k < r.length - 1 && Math.abs(px - lx) < 0.35 && Math.abs(py - ly) < 0.35) return;
+        seg += (k ? "L" : "M") + px.toFixed(1) + " " + py.toFixed(1);
+        lx = px; ly = py;
+      });
+      d += seg + "Z";
+    });
+    return `<path d="${d}" class="${cls(f.properties[code])}" data-i="${i}"/>`;
+  }).join("");
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(t("mapTitle"))}: ${esc(code)}">${paths}</svg><div class="map-tip" id="mapTip" hidden></div>`;
+  // legend
+  const lo = vals.length ? Math.min(...vals) : 0, hi = vals.length ? Math.max(...vals) : 0;
+  const edges = [lo, ...breaks, hi];
+  const nCls = breaks.length + 1;
+  const items = [];
+  for (let i = 0; i < nCls; i++) {
+    const c = "c" + (i + 1 + (5 - nCls));
+    const n = vals.filter((v) => cls(v) === c).length;
+    items.push(`<span class="lg"><i class="sw ${c}"></i>${fmtNum(edges[i])} – ${fmtNum(edges[i + 1])} <span class="muted">(${n})</span></span>`);
+  }
+  const nd = feats.length - vals.length;
+  if (nd) items.push(`<span class="lg"><i class="sw nd"></i>${esc(t("mapNoData"))} <span class="muted">(${nd})</span></span>`);
+  const label = S.result?.dictionary.find((x) => x.code === code)?.label || code;
+  $("mapLegend").innerHTML = `<div class="lg-title"><code>${esc(code)}</code> ${esc(label)}</div><div class="lg-row">${items.join("")}</div>`;
+}
+
+function mapHover(e) {
+  const tip = $("mapTip"); if (!tip) return;
+  const p = e.target.closest("path[data-i]");
+  document.querySelectorAll("#mapBox path.hl").forEach((x) => x !== p && x.classList.remove("hl"));
+  if (!p) { tip.hidden = true; return; }
+  p.classList.add("hl");
+  const f = S.bounds.fc.features[Number(p.dataset.i)], code = $("mapVar").value, v = f.properties[code];
+  const moeCode = code.replace(/E$/, "M"), moe = moeCode !== code ? f.properties[moeCode] : null;
+  tip.innerHTML = `<b>${esc(f.properties.NAME ?? f.properties.GEOID)}</b><br><code>${esc(code)}</code>: ${typeof v === "number" ? fmtNum(v) : esc(t("mapNoData"))}${typeof moe === "number" ? ` <span class="muted">± ${fmtNum(moe)}</span>` : ""}<br><span class="muted">GEOID ${esc(f.properties.GEOID)}</span>`;
+  const r = $("mapBox").getBoundingClientRect();
+  let x = e.clientX - r.left + 14, y = e.clientY - r.top + 14;
+  tip.hidden = false;
+  if (x + tip.offsetWidth > r.width) x = e.clientX - r.left - tip.offsetWidth - 14;
+  if (y + tip.offsetHeight > r.height) y = e.clientY - r.top - tip.offsetHeight - 14;
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+
+function renderBoundaryPanel() {
+  const r = S.result;
+  if (!r) return;
+  const n = r.rows.length;
+  $("bLarge").innerHTML = n > 3000 ? msg("warn", t("bLarge", { n: fmtNum(n) })) : "";
+  const b = S.bounds;
+  $("bOutputs").hidden = !b;
+  if (!b) return;
+  const srcLabel = b.src.fallback ? t("bCurrent") : b.src.label;
+  $("bInfo").innerHTML = b.notes.map(([k, v]) => msg("warn", t(k, v))).join("") +
+    msg("ok", t("bDone", { n: fmtNum(b.fc.features.length), src: `${srcLabel} · ${b.layerNames}` }));
+  const sel = $("mapVar"), prev = sel.value;
+  const vars = mapVariables(b);
+  const dict = new Map((r.dictionary || []).map((d) => [d.code, d.label]));
+  sel.innerHTML = vars.map((c) => `<option value="${esc(c)}">${esc(c)} — ${esc(dict.get(c) || "")}</option>`).join("");
+  if (vars.includes(prev)) sel.value = prev;
+  $("mapWrap").hidden = !vars.length;
+  if (vars.length) renderMap();
+}
+
+async function onGetBoundaries() {
+  const btn = $("bGet");
+  btn.disabled = true; S.bounds = null; $("bOutputs").hidden = true;
+  const status = (x) => { $("bStatus").innerHTML = `<span class="spinner"></span>${esc(x)}`; };
+  $("bInfo").innerHTML = "";
+  try {
+    const simplified = document.querySelector('input[name="bDetail"]:checked').value === "simplified";
+    S.bounds = await fetchBoundaries(S.result, simplified, status);
+    S.bounds.simplified = simplified;
+    $("bStatus").innerHTML = "";
+    renderBoundaryPanel();
+  } catch (e) {
+    $("bStatus").innerHTML = "";
+    $("bInfo").innerHTML = msg("err", e.message || String(e));
+    if (!(e instanceof TigerError) && !(e instanceof CensusError)) console.error(e);
+  } finally { btn.disabled = false; }
+}
+
+function wireBoundaries() {
+  $("bGet").addEventListener("click", onGetBoundaries);
+  $("mapVar").addEventListener("change", renderMap);
+  $("mapBox").addEventListener("mousemove", mapHover);
+  $("mapBox").addEventListener("mouseleave", () => { const tip = $("mapTip"); if (tip) tip.hidden = true; document.querySelectorAll("#mapBox path.hl").forEach((x) => x.classList.remove("hl")); });
+  $("dlGeojson").addEventListener("click", () => {
+    downloadBlob(outBase() + "_boundaries.geojson", new Blob([JSON.stringify(S.bounds.fc)], { type: "application/geo+json" }));
+  });
+  $("dlShp").addEventListener("click", () => {
+    const base = outBase().replace(/[^\w.-]+/g, "_") + "_boundaries";
+    downloadBlob(base + "_shapefile.zip", buildShapefile(S.bounds, base));
+  });
+}
+
+async function init() {
+  const savedLang = storageGet("censusLang");
+  LANG = savedLang === "es" || savedLang === "en" ? savedLang : (/^es\b/i.test(navigator.language || "") ? "es" : "en");
+  applyStaticText();
+  S.prOnly = storageGet("censusPrOnly") !== "0"; S.prTables = storageGet("censusPrTables") !== "0";
+  $("prOnly").checked = S.prOnly; $("prTables").checked = S.prTables;
+  wire();
+  renderSelection();
+  S.catStatus = { kind: "loading", key: "loadingCatalogue" };
+  renderStatusBoxes();
+  try {
+    S.catalogue = await loadCatalogue();
+    S.catalogueOk = S.catalogue.length > 0;
+  } catch (e) {
+    S.catalogueOk = false;
+    S.catalogueErr = e.message;
+  }
+  S.catStatus = null;
+  renderDatasetOptions();
+  renderYears();
+  if (S.catalogueErr) $("catalogueMsg").innerHTML = msg("err", t("catalogueFail") + S.catalogueErr) + $("catalogueMsg").innerHTML;
+  onYearOrDatasetChange();
+}
+
+init();
+</script>
+</body>
+</html>
